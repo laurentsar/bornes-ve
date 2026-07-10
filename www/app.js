@@ -377,19 +377,22 @@ function card(s, mine, it) {
     ? `<a class="btn-nav" href="${navUrl}" target="_blank" rel="noopener" title="Y aller (itinéraire GPS)">🧭 Y aller</a>` : '';
   const mapBtn = mapUrl
     ? `<a class="btn-map" href="${mapUrl}" target="_blank" rel="noopener" title="Voir sur la carte">🗺️</a>` : '';
+  // Id d'ACTION : pour un favori on utilise l'id du favori (it.id) — le snap.id peut
+  // avoir changé après une actualisation, ce qui cassait suppression / prix.
+  const aid = (mine && it) ? it.id : s.id;
   // Croisement IRVE × ChargePrice : bouton visible si une clé ChargePrice est saisie.
   const cpBtn = (cpKey() && s.lat && s.lon)
-    ? `<button class="btn-cp" data-cp="${esc(s.id)}" title="Prix réels multi-opérateurs (ChargePrice)">💶 Prix réels</button>` : '';
+    ? `<button class="btn-cp" data-cp="${esc(aid)}" title="Prix réels multi-opérateurs (ChargePrice)">💶 Prix réels</button>` : '';
 
   let actions;
   if (mine) {
     actions = `
-      <button class="btn-price" data-price="${esc(s.id)}">💶 Mon prix</button>
+      <button class="btn-price" data-price="${esc(aid)}">💶 Mon prix</button>
       ${cpBtn}${navBtn}${mapBtn}
-      <button class="btn-del" data-del="${esc(s.id)}">🗑️</button>`;
+      <button class="btn-del" data-del="${esc(aid)}">🗑️</button>`;
   } else {
     actions = `
-      <button class="${added ? 'btn-added' : 'btn-add'}" data-add="${esc(s.id)}" ${added ? 'disabled' : ''}>
+      <button class="${added ? 'btn-added' : 'btn-add'}" data-add="${esc(aid)}" ${added ? 'disabled' : ''}>
         ${added ? '✅ Suivie' : '⭐ Suivre'}</button>
       ${cpBtn}${navBtn}${mapBtn}`;
   }
@@ -490,7 +493,7 @@ async function refreshAll() {
       if (rows.length) {
         const grouped = groupStations(rows);
         const g = grouped.find(x => x.id === it.id) || grouped[0];
-        if (g) { it.snap = snapOf(g); ok++; }
+        if (g) { it.snap = snapOf(g); it.snap.id = it.id; ok++; }  // garde l'id du favori stable
       }
     } catch (e) { /* on garde le cache */ }
   }
