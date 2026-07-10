@@ -113,8 +113,10 @@ function connectorsOf(row) {
 // Clé de LIEU : mêmes coordonnées (arrondies ~11 m) = même endroit ; sinon adresse ;
 // sinon id station. Permet de factoriser plusieurs stations/pompes au même lieu.
 function locKey(r) {
+  // 3 décimales ≈ 110 m : fusionne les déclarations d'un même lieu dont les
+  // coordonnées diffèrent légèrement (évite les cartes en double).
   const lat = parseFloat(r.consolidated_latitude), lon = parseFloat(r.consolidated_longitude);
-  if (isFinite(lat) && isFinite(lon) && (lat || lon)) return lat.toFixed(4) + ',' + lon.toFixed(4);
+  if (isFinite(lat) && isFinite(lon) && (lat || lon)) return lat.toFixed(3) + ',' + lon.toFixed(3);
   const addr = (r.adresse_station || '').trim().toLowerCase();
   if (addr) return 'a:' + addr;
   return 'i:' + (r.id_station_itinerance || r.nom_station || '');
@@ -228,22 +230,27 @@ function renderTypeChips() {
     };
   });
 }
-// Chips fournisseurs (multi-sélection). Liste tous les opérateurs présents dans
-// les résultats ; garde les sélections encore valides.
+// Normalisation d'un nom d'opérateur (casse/espaces) pour dédupliquer les
+// variantes (« Lidl France » vs « LIDL France »).
+function opNorm(o) { return String(o || '').trim().toLowerCase(); }
+
+// Chips fournisseurs (multi-sélection), dédupliqués insensiblement à la casse.
+// activeOps contient des clés normalisées ; les chips affichent le 1er libellé vu.
 function fillOperatorChips(stations) {
-  const set = new Set();
-  stations.forEach(s => (s.operateurs && s.operateurs.length ? s.operateurs : [s.operateur]).forEach(o => o && set.add(o)));
-  const ops = [...set].sort((a, b) => a.localeCompare(b));
+  const disp = new Map();  // norm -> libellé affiché
+  stations.forEach(s => (s.operateurs && s.operateurs.length ? s.operateurs : [s.operateur])
+    .forEach(o => { if (o) { const n = opNorm(o); if (!disp.has(n)) disp.set(n, o); } }));
   // purge les sélections disparues
-  [...activeOps].forEach(o => { if (!set.has(o)) activeOps.delete(o); });
-  el('operatorChips').innerHTML = ops.map(o =>
-    `<span class="chip${activeOps.has(o) ? ' on' : ''}" data-op="${esc(o)}">${esc(o)}</span>`
+  [...activeOps].forEach(n => { if (!disp.has(n)) activeOps.delete(n); });
+  const entries = [...disp.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  el('operatorChips').innerHTML = entries.map(([n, d]) =>
+    `<span class="chip${activeOps.has(n) ? ' on' : ''}" data-op="${esc(n)}">${esc(d)}</span>`
   ).join('') || '<span class="muted" style="font-size:12px">—</span>';
   el('opCount').textContent = activeOps.size ? '(' + activeOps.size + ' sélectionné' + (activeOps.size > 1 ? 's' : '') + ')' : '';
   el('operatorChips').querySelectorAll('.chip').forEach(ch => {
     ch.onclick = () => {
-      const o = ch.dataset.op;
-      activeOps.has(o) ? activeOps.delete(o) : activeOps.add(o);
+      const n = ch.dataset.op;
+      activeOps.has(n) ? activeOps.delete(n) : activeOps.add(n);
       renderSearch();
     };
   });
@@ -258,7 +265,7 @@ function renderSearch() {
   const radius = num(el('radiusFilter').value) || 5;
   const filtered = stations.filter(s => {
     if (activeOps.size) {
-      const ops = (s.operateurs && s.operateurs.length) ? s.operateurs : [s.operateur];
+      const ops = ((s.operateurs && s.operateurs.length) ? s.operateurs : [s.operateur]).map(opNorm);
       if (!ops.some(o => activeOps.has(o))) return false;
     }
     if (minPow && s.puissance < minPow) return false;
