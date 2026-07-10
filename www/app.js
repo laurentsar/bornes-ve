@@ -795,6 +795,14 @@ async function checkUpdate() {
 const CP_BASE_DEFAULT = 'https://api.chargeprice.app';
 function cpKey() { try { return (localStorage.getItem('cpKey') || '').trim(); } catch (e) { return ''; } }
 function cpBase() { try { return (localStorage.getItem('cpBase') || CP_BASE_DEFAULT).trim() || CP_BASE_DEFAULT; } catch (e) { return CP_BASE_DEFAULT; } }
+// URL de l'endpoint, robuste quelle que soit la base saisie (⚠️ PAS de slash final
+// sinon 404) : gère base nue, base finissant par /v1, ou déjà /charge_prices.
+function cpUrl() {
+  let b = cpBase().replace(/\/+$/, '');
+  if (/\/charge_prices$/i.test(b)) return b;
+  if (/\/v\d+$/i.test(b)) return b + '/charge_prices';
+  return b + '/v1/charge_prices';
+}
 const CP_PLUG = { 'Type 2': 'type2', 'CCS Combo': 'ccs', 'CHAdeMO': 'chademo', 'Type E/F': 'schuko' };
 function cpChargePoints(s) {
   const pts = [], seen = new Set();
@@ -809,7 +817,7 @@ async function cpFetch(s) {
     station: { longitude: num(s.lon), latitude: num(s.lat), country: 'FR', charge_points: cpChargePoints(s) },
     options: { energy: 30, duration: 30, currency: 'EUR', start_time: 720 },
   } } };
-  const url = cpBase().replace(/\/+$/, '') + '/v1/charge_prices';
+  const url = cpUrl();
   const headers = { 'API-Key': cpKey(), 'Content-Type': 'application/json', 'Accept-Language': 'fr' };
   let json;
   const HTTP = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
@@ -849,8 +857,12 @@ async function openChargePrice(id) {
       </div>`).join('');
   } catch (e) {
     const m = (e && e.message) || String(e);
-    el('cpList').innerHTML = '<p class="cp-note">⚠️ ' +
-      (m === 'no-key' ? 'Clé manquante.' : 'Échec (' + esc(m) + '). Vérifie ta clé et la base URL. En navigateur, le CORS peut bloquer — ça marche dans l’APK.') + '</p>';
+    let hint;
+    if (m === 'no-key') hint = 'Clé manquante.';
+    else if (/404/.test(m)) hint = 'Base URL incorrecte. Laisse simplement <b>https://api.chargeprice.app</b> (sans /v1 ni slash final) dans ℹ️ Infos.';
+    else if (/401|403/.test(m)) hint = 'Clé refusée. Vérifie la clé démo collée dans ℹ️ Infos.';
+    else hint = 'Échec (' + esc(m) + '). Vérifie clé et base URL. En navigateur le CORS peut bloquer — utilise l’APK.';
+    el('cpList').innerHTML = '<p class="cp-note">⚠️ ' + hint + '</p>';
   }
 }
 
