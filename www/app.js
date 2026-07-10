@@ -377,18 +377,21 @@ function card(s, mine, it) {
     ? `<a class="btn-nav" href="${navUrl}" target="_blank" rel="noopener" title="Y aller (itinéraire GPS)">🧭 Y aller</a>` : '';
   const mapBtn = mapUrl
     ? `<a class="btn-map" href="${mapUrl}" target="_blank" rel="noopener" title="Voir sur la carte">🗺️</a>` : '';
+  // Croisement IRVE × ChargePrice : bouton visible si une clé ChargePrice est saisie.
+  const cpBtn = (cpKey() && s.lat && s.lon)
+    ? `<button class="btn-cp" data-cp="${esc(s.id)}" title="Prix réels multi-opérateurs (ChargePrice)">💶 Prix réels</button>` : '';
 
   let actions;
   if (mine) {
     actions = `
       <button class="btn-price" data-price="${esc(s.id)}">💶 Mon prix</button>
-      ${navBtn}${mapBtn}
+      ${cpBtn}${navBtn}${mapBtn}
       <button class="btn-del" data-del="${esc(s.id)}">🗑️</button>`;
   } else {
     actions = `
       <button class="${added ? 'btn-added' : 'btn-add'}" data-add="${esc(s.id)}" ${added ? 'disabled' : ''}>
         ${added ? '✅ Suivie' : '⭐ Suivre'}</button>
-      ${navBtn}${mapBtn}`;
+      ${cpBtn}${navBtn}${mapBtn}`;
   }
 
   return `<div class="card" data-card="${esc(s.id)}">
@@ -426,6 +429,7 @@ function wireCards(root) {
   root.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addStation(b.dataset.add));
   root.querySelectorAll('[data-del]').forEach(b => b.onclick = () => delStation(b.dataset.del));
   root.querySelectorAll('[data-price]').forEach(b => b.onclick = () => openPrice(b.dataset.price));
+  root.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => openChargePrice(b.dataset.cp));
 }
 
 function addStation(id) {
@@ -700,6 +704,69 @@ async function checkUpdate() {
   } catch (e) { st.textContent = ' · échec de la vérification (hors ligne ?)'; }
 }
 
+// ---------- ChargePrice : prix réels multi-opérateurs (clé API démo requise) ----------
+const CP_BASE_DEFAULT = 'https://api.chargeprice.app';
+function cpKey() { try { return (localStorage.getItem('cpKey') || '').trim(); } catch (e) { return ''; } }
+function cpBase() { try { return (localStorage.getItem('cpBase') || CP_BASE_DEFAULT).trim() || CP_BASE_DEFAULT; } catch (e) { return CP_BASE_DEFAULT; } }
+const CP_PLUG = { 'Type 2': 'type2', 'CCS Combo': 'ccs', 'CHAdeMO': 'chademo', 'Type E/F': 'schuko' };
+function cpChargePoints(s) {
+  const pts = [], seen = new Set();
+  (s.connectors || []).forEach(c => { const p = CP_PLUG[c]; if (p && !seen.has(p)) { seen.add(p); pts.push({ power: num(s.puissance) || 22, plug: p }); } });
+  if (!pts.length) pts.push({ power: num(s.puissance) || 22, plug: 'type2' });
+  return pts;
+}
+async function cpFetch(s) {
+  if (!cpKey()) throw new Error('no-key');
+  const body = { data: { type: 'charge_price_request', attributes: {
+    data_adapter: 'chargeprice',
+    station: { longitude: num(s.lon), latitude: num(s.lat), country: 'FR', charge_points: cpChargePoints(s) },
+    options: { energy: 30, duration: 30, currency: 'EUR', start_time: 720 },
+  } } };
+  const url = cpBase().replace(/\/+$/, '') + '/v1/charge_prices';
+  const headers = { 'API-Key': cpKey(), 'Content-Type': 'application/json', 'Accept-Language': 'fr' };
+  let json;
+  const HTTP = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
+  if (HTTP) {   // natif : contourne le CORS (l'API ChargePrice n'ouvre pas le CORS navigateur)
+    const r = await HTTP.post({ url, headers, data: body, connectTimeout: 12000, readTimeout: 20000 });
+    if (r.status && r.status >= 400) throw new Error('HTTP ' + r.status);
+    json = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+  } else {
+    const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    json = await r.json();
+  }
+  return (json.data || []).map(d => {
+    const a = d.attributes || {}, cpp = (a.charge_point_prices || [])[0] || {};
+    return { provider: a.provider || '?', tariff: a.tariff_name || '', price: cpp.price, currency: a.currency || 'EUR' };
+  }).filter(x => isFinite(x.price)).sort((a, b) => a.price - b.price);
+}
+function stationById(id) {
+  const it = myStations.find(m => m.id === id);
+  if (it) return it.snap;
+  return (currentStations || []).find(x => x.id === id) || null;
+}
+async function openChargePrice(id) {
+  const s = stationById(id);
+  if (!s) return;
+  if (!cpKey()) { alert('Ajoute ta clé ChargePrice dans l’onglet ℹ️ Infos pour voir les prix réels.'); return; }
+  el('cpTitle').textContent = s.nom || 'Prix réels';
+  el('cpList').innerHTML = '<p class="cp-note">⏳ Récupération des tarifs…</p>';
+  el('cpModal').hidden = false;
+  try {
+    const rows = await cpFetch(s);
+    if (!rows.length) { el('cpList').innerHTML = '<p class="cp-note">Aucun tarif renvoyé (données démo limitées pour cette borne).</p>'; return; }
+    el('cpList').innerHTML = rows.slice(0, 25).map((r, i) =>
+      `<div class="cp-row${i === 0 ? ' best' : ''}">
+        <div><div class="cp-prov">${i === 0 ? '⭐ ' : ''}${esc(r.provider)}</div><div class="cp-tar">${esc(r.tariff)}</div></div>
+        <div class="cp-price">${r.price.toFixed(2)} ${esc(r.currency)}</div>
+      </div>`).join('');
+  } catch (e) {
+    const m = (e && e.message) || String(e);
+    el('cpList').innerHTML = '<p class="cp-note">⚠️ ' +
+      (m === 'no-key' ? 'Clé manquante.' : 'Échec (' + esc(m) + '). Vérifie ta clé et la base URL. En navigateur, le CORS peut bloquer — ça marche dans l’APK.') + '</p>';
+  }
+}
+
 // ---------- tabs ----------
 function initTabs() {
   document.querySelectorAll('.tab').forEach(t => {
@@ -730,6 +797,22 @@ function init() {
   el('pmCancel').onclick = closePrice;
   el('pmSave').onclick = savePrice;
   el('priceModal').addEventListener('click', e => { if (e.target === el('priceModal')) closePrice(); });
+
+  // ChargePrice (prix réels) : clé + base + modale
+  el('cpKeyInput').value = cpKey();
+  try { el('cpBaseInput').value = localStorage.getItem('cpBase') || ''; } catch (e) {}
+  el('cpSaveBtn').onclick = () => {
+    try {
+      localStorage.setItem('cpKey', el('cpKeyInput').value.trim());
+      const b = el('cpBaseInput').value.trim();
+      if (b) localStorage.setItem('cpBase', b); else localStorage.removeItem('cpBase');
+    } catch (e) {}
+    el('cpSaveState').textContent = ' ✅ enregistré';
+    renderMine();
+    if (searchRaw.length) renderResults();
+  };
+  el('cpClose').onclick = () => { el('cpModal').hidden = true; };
+  el('cpModal').addEventListener('click', e => { if (e.target === el('cpModal')) el('cpModal').hidden = true; });
 
   // menu déroulant multichoix fournisseurs
   el('opDropBtn').onclick = e => { e.stopPropagation(); el('opDropPanel').hidden = !el('opDropPanel').hidden; };

@@ -1,6 +1,6 @@
 {
   "name": "bornes-ve",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "private": true,
   "description": "Référence tes bornes de recharge VE (données officielles IRVE gouv.fr), filtre par type de prise et fournisseur, et compare tes prix (PWA + APK, offline)",
   "scripts": { "sync": "cap sync android", "open": "cap open android" },

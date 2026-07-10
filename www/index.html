@@ -118,6 +118,21 @@
       (la base est mise à jour en continu ; la date <span class="pill">maj</span> indique la dernière
       mise à jour déclarée). Tes bornes et tes prix restent enregistrés hors ligne.</p>
       <p class="muted">Source : Base nationale IRVE consolidée (Etalab / data.gouv.fr), licence Ouverte.</p>
+
+      <h2>💶 Prix réels (ChargePrice)</h2>
+      <p class="muted">Affiche les <b>tarifs réels</b> de multiples opérateurs pour une borne
+      (bouton « 💶 Prix réels » sur les cartes), via l'API ChargePrice. Nécessite une
+      <b>clé démo gratuite</b> (usage non commercial, données limitées) à demander ici :
+      <a href="https://tally.so/r/w4pJAX" target="_blank" rel="noopener">formulaire ChargePrice</a>.</p>
+      <label class="muted">Clé API ChargePrice
+        <input id="cpKeyInput" type="text" placeholder="colle ta clé démo ici" style="width:100%;margin-top:4px" />
+      </label>
+      <label class="muted" style="display:block;margin-top:8px">Base URL (fournie avec la clé)
+        <input id="cpBaseInput" type="text" placeholder="https://api.chargeprice.app" style="width:100%;margin-top:4px" />
+      </label>
+      <div style="margin-top:10px"><button id="cpSaveBtn" class="primary">Enregistrer la clé</button>
+        <span id="cpSaveState" class="muted"></span></div>
+
       <h2>Version & mises à jour</h2>
       <p>Version installée : <b id="appVersion">—</b><span id="updState" class="muted"></span></p>
       <p class="muted">Mise à jour automatique : une bannière s'affiche dès qu'une version plus
@@ -153,9 +168,21 @@
     </div>
   </div>
 
+  <!-- résultats prix réels ChargePrice (modale) -->
+  <div id="cpModal" class="modal" hidden>
+    <div class="modal-box">
+      <h3 id="cpTitle">Prix réels</h3>
+      <p class="muted" id="cpSub">Tarifs pour une session de ~30 kWh.</p>
+      <div id="cpList" class="cp-list"></div>
+      <div class="modal-actions">
+        <button id="cpClose" class="primary">Fermer</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     window.UPDATE_REPO = 'laurentsar/bornes-ve';
-    window.APP_VERSION = '1.11';
+    window.APP_VERSION = '1.12';
   </script>
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js"></script>
