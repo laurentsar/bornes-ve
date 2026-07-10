@@ -5,9 +5,14 @@ Application **PWA + APK** (Capacitor) pour référencer tes **bornes de recharge
 filtrer par **type de prise** et **fournisseur**, et **comparer tes prix**.
 
 ## Fonctions
-- 🔎 **Recherche par commune** dans la base officielle IRVE (tabular-API data.gouv.fr, en direct).
+- 🔎 **Recherche par commune OU enseigne** dans la base officielle IRVE (tabular-API data.gouv.fr, en direct).
+  Enseigne utile car certaines bornes (Lidl, Tesla…) ont une commune vide dans la base et n'apparaissent
+  que par leur réseau.
 - 📍 **Autour de moi** : géolocalisation (plugin Capacitor Geolocation / `navigator.geolocation`),
   bornes dans un rayon réglable (2–20 km), tri et affichage par distance.
+- 🗺️ **Carte** : toutes tes bornes favorites sur une carte Leaflet/OpenStreetMap (bundlée en local),
+  marqueurs cliquables (opérateur, puissance, ton prix) + lien « Y aller » (Google Maps).
+- 🏷️ **Pastilles-logo** par opérateur (couleur de marque + initiales, générées, sans logo externe).
 - 🎛️ **Filtres** : types de prise (Type 2 / CCS Combo / CHAdeMO / Type E-F / Autre), **fournisseur** (opérateur), puissance mini.
 - ⭐ **Mes bornes** : tu suis les stations que tu veux, enregistrées **hors ligne** (localStorage).
 - 💶 **Mon prix** par borne (€/kWh, €/session, €/min ou gratuit) + note → tri par prix.

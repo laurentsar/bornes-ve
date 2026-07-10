@@ -67,6 +67,43 @@ function fmtDist(km) {
   return km < 1 ? Math.round(km * 1000) + ' m' : km.toFixed(km < 10 ? 1 : 0) + ' km';
 }
 
+// Pastille-logo d'un opérateur : couleur de marque connue sinon couleur
+// déterministe (hash du nom) + initiales. Autonome, pas de logo externe.
+const BRANDS = [
+  { re: /tesla/i,            c: '#e82127', t: 'T'  },
+  { re: /lidl/i,             c: '#0050aa', t: 'Li' },
+  { re: /ionity/i,           c: '#2b2b40', t: 'IO' },
+  { re: /total|totalenergies/i, c: '#e2001a', t: 'TE' },
+  { re: /izivia/i,           c: '#00a3a1', t: 'IZ' },
+  { re: /freshmile/i,        c: '#5b2a86', t: 'FM' },
+  { re: /driveco/i,          c: '#00b2a9', t: 'DC' },
+  { re: /allego/i,           c: '#e5007d', t: 'AL' },
+  { re: /electra/i,          c: '#1b2440', t: 'EL' },
+  { re: /engie|vianeo/i,     c: '#0aa89e', t: 'EN' },
+  { re: /bouygues/i,         c: '#e2001a', t: 'BY' },
+  { re: /shell/i,            c: '#ed1c24', t: 'SH' },
+  { re: /fastned/i,          c: '#ffce00', t: 'FN' },
+  { re: /powerdot|power dot/i, c: '#ff5a00', t: 'PD' },
+  { re: /chargepoint/i,      c: '#f7901e', t: 'CP' },
+];
+function initials(name) {
+  const w = String(name || '').replace(/[^A-Za-zÀ-ÿ0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '?';
+  if (w.length === 1) return w[0].slice(0, 2).toUpperCase();
+  return (w[0][0] + w[1][0]).toUpperCase();
+}
+function hashHue(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+function logoHtml(op) {
+  const brand = BRANDS.find(b => b.re.test(op || ''));
+  const color = brand ? brand.c : `hsl(${hashHue(op || '')} 55% 40%)`;
+  const txt = brand ? brand.t : initials(op);
+  return `<div class="logo" style="background:${color}">${esc(txt)}</div>`;
+}
+
 // Connecteurs présents sur un point de charge -> liste de labels.
 function connectorsOf(row) {
   return CONNECTORS.filter(c => truthy(row[c.key])).map(c => c.label);
@@ -123,6 +160,21 @@ async function fetchRows(params, maxPages) {
 function fetchByCommune(commune) {
   // jusqu'à 5 pages (500 pdc) pour couvrir les grosses communes
   return fetchRows('consolidated_commune__contains=' + encodeURIComponent(commune.trim()), 5);
+}
+// Recherche par enseigne / nom de réseau (ex : Lidl, Tesla) — utile car certaines
+// bornes ont une commune vide dans la base (invisibles à la recherche par commune).
+function fetchByEnseigne(term) {
+  return fetchRows('nom_enseigne__contains=' + encodeURIComponent(term.trim()), 3);
+}
+// Fusionne deux listes de lignes en dédupliquant par __id.
+function mergeRows(a, b) {
+  const seen = new Set(), out = [];
+  for (const row of a.concat(b)) {
+    const k = row.__id != null ? row.__id : (row.id_pdc_itinerance || JSON.stringify(row).slice(0, 60));
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(row);
+  }
+  return out;
 }
 function fetchByStationId(id) {
   return fetchRows('id_station_itinerance__exact=' + encodeURIComponent(id), 1);
@@ -255,10 +307,13 @@ function card(s, mine, it) {
 
   return `<div class="card" data-card="${esc(s.id)}">
     <div class="card-top">
-      <div style="min-width:0">
-        <p class="card-name">${esc(s.nom)}</p>
-        <p class="card-op">⚡ ${esc(s.operateur)}</p>
-        <p class="card-addr">📍 ${esc(s.adresse)}</p>
+      <div class="card-main">
+        ${logoHtml(s.operateur)}
+        <div style="min-width:0">
+          <p class="card-name">${esc(s.nom)}</p>
+          <p class="card-op">⚡ ${esc(s.operateur)}</p>
+          <p class="card-addr">📍 ${esc(s.adresse)}</p>
+        </div>
       </div>
     </div>
     <div class="badges">${badges.join('')}</div>
@@ -345,15 +400,20 @@ async function refreshAll() {
 
 // ---------- recherche ----------
 async function doSearch() {
-  const commune = el('communeInput').value.trim();
-  if (!commune) { el('searchStatus').textContent = 'Entre une commune.'; return; }
-  geoSort = false;                       // recherche par commune : pas de tri distance
+  const term = el('communeInput').value.trim();
+  if (!term) { el('searchStatus').textContent = 'Entre une commune ou une enseigne.'; return; }
+  geoSort = false;                       // recherche texte : pas de tri distance
   el('searchStatus').innerHTML = '<span class="spin">⏳</span> Recherche officielle…';
   el('searchList').innerHTML = '';
   try {
-    searchRaw = await fetchByCommune(commune);
+    // Commune ET enseigne en parallèle (ex : « Lidl », « Tesla » n'ont pas de commune).
+    const [byCom, byEns] = await Promise.all([
+      fetchByCommune(term).catch(() => []),
+      fetchByEnseigne(term).catch(() => []),
+    ]);
+    searchRaw = mergeRows(byCom, byEns);
     renderSearch();
-    if (!searchRaw.length) el('searchStatus').textContent = 'Aucune borne trouvée pour « ' + commune + ' ».';
+    if (!searchRaw.length) el('searchStatus').textContent = 'Aucune borne trouvée pour « ' + term + ' ».';
   } catch (e) {
     el('searchStatus').textContent = '⚠️ Erreur réseau (' + e.message + '). Réessaie.';
   }
@@ -402,6 +462,63 @@ async function geolocate() {
   );
 }
 
+// ---------- carte (Leaflet) ----------
+let map = null, markerLayer = null, meMarker = null;
+const MARKER_ICON = () => L.icon({
+  iconUrl: 'vendor/leaflet/images/marker-icon.png',
+  iconRetinaUrl: 'vendor/leaflet/images/marker-icon-2x.png',
+  shadowUrl: 'vendor/leaflet/images/marker-shadow.png',
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
+});
+function mapPopup(it) {
+  const s = it.snap;
+  const p = it.price;
+  let price = '';
+  if (p && p.type) {
+    const unit = { kwh: '€/kWh', session: '€/session', min: '€/min', free: '' }[p.type];
+    price = `<div class="p-price">💶 ${p.type === 'free' ? 'Gratuit' : (Number(p.value).toFixed(2) + ' ' + unit)}</div>`;
+  }
+  const nav = (s.lat && s.lon)
+    ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank" rel="noopener">🧭 Y aller</a>` : '';
+  return `<b>${esc(s.nom)}</b>
+    <div class="p-op">⚡ ${esc(s.operateur)}${s.puissance ? ' · ' + s.puissance + ' kW' : ''}</div>
+    <div>${esc(s.adresse || '')}</div>${price}${nav}`;
+}
+function showMap() {
+  const withCoords = myStations.filter(m => isFinite(num(m.snap.lat)) && isFinite(num(m.snap.lon)) && num(m.snap.lat) !== 0);
+  el('mapEmpty').style.display = withCoords.length ? 'none' : 'block';
+  el('map').style.display = withCoords.length ? 'block' : 'none';
+  if (!withCoords.length) return;
+
+  if (!map) {
+    map = L.map('map', { zoomControl: true }).setView([46.6, 2.4], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap',
+    }).addTo(map);
+    markerLayer = L.layerGroup().addTo(map);
+  }
+  markerLayer.clearLayers();
+  const pts = [];
+  for (const it of withCoords) {
+    const lat = num(it.snap.lat), lon = num(it.snap.lon);
+    L.marker([lat, lon], { icon: MARKER_ICON() }).addTo(markerLayer).bindPopup(mapPopup(it));
+    pts.push([lat, lon]);
+  }
+  if (userPos) {
+    if (meMarker) meMarker.remove();
+    meMarker = L.circleMarker([userPos.lat, userPos.lon], {
+      radius: 8, color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.9,
+    }).addTo(map).bindPopup('📍 Ma position');
+    pts.push([userPos.lat, userPos.lon]);
+  }
+  // Leaflet a besoin que le conteneur soit visible pour se dimensionner.
+  setTimeout(() => {
+    map.invalidateSize();
+    if (pts.length === 1) map.setView(pts[0], 14);
+    else map.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
+  }, 60);
+}
+
 // ---------- tabs ----------
 function initTabs() {
   document.querySelectorAll('.tab').forEach(t => {
@@ -410,6 +527,7 @@ function initTabs() {
       document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
       t.classList.add('active');
       el('tab-' + t.dataset.tab).classList.add('active');
+      if (t.dataset.tab === 'map') showMap();
     };
   });
 }
