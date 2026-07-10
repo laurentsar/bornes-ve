@@ -28,6 +28,7 @@ let editingId = null;             // borne en cours d'édition de prix
 let userPos = null;               // {lat, lon} position GPS de l'utilisateur
 let geoSort = false;              // trier la recherche par distance (mode "autour de moi")
 let expandedCities = new Set();   // villes dépliées dans "Mes bornes" (fermées par défaut)
+let expandedCards = new Set();     // tuiles de bornes dépliées (fermées par défaut)
 let _revGeoDone = new Set();      // favoris déjà reverse-géocodés (ville manquante)
 
 // ---------- utils ----------
@@ -428,11 +429,14 @@ function myPriceLine(it) {
 }
 function card(s, mine, it) {
   const added = myStations.some(m => m.id === s.id);
-  const badges = [];
   const d = stationDist(s);
-  if (d != null) badges.push(`<span class="badge dist">📍 ${fmtDist(d)}</span>`);
-  if (s.puissance) badges.push(`<span class="badge pow">${s.puissance} kW</span>`);
-  if (s.pdc) badges.push(`<span class="badge">⚡ ${s.pdc} pompe${s.pdc > 1 ? 's' : ''}</span>`);
+  // Résumé toujours visible (en-tête) : distance · puissance · nb pompes.
+  const summ = [];
+  if (d != null) summ.push('📍 ' + fmtDist(d));
+  if (s.puissance) summ.push('⚡ ' + s.puissance + ' kW');
+  if (s.pdc) summ.push(s.pdc + ' pompe' + (s.pdc > 1 ? 's' : ''));
+  // Badges détaillés (dans le corps dépliable) : prises + gratuit + CB.
+  const badges = [];
   s.connectors.forEach(c => badges.push(`<span class="badge">${esc(c)}</span>`));
   if (s.gratuit) badges.push('<span class="badge free">Gratuit</span>');
   if (s.cb) badges.push('<span class="badge cb">CB</span>');
@@ -469,23 +473,27 @@ function card(s, mine, it) {
       ${cpBtn}${navBtn}${mapBtn}`;
   }
 
-  return `<div class="card" data-card="${esc(s.id)}">
-    <div class="card-top">
-      <div class="card-main">
-        ${logoHtml(s.operateur)}
-        <div style="min-width:0">
-          <p class="card-name">${esc(s.nom)}</p>
-          <p class="card-op">⚡ ${esc(s.operateur)}${s.nbOperateurs > 1 ? ' +' + (s.nbOperateurs - 1) + ' réseau' + (s.nbOperateurs > 2 ? 'x' : '') : ''}</p>
-          <p class="card-addr">📍 ${esc(s.adresse)}</p>
-        </div>
+  const open = expandedCards.has(aid);
+  const nbOp = s.nbOperateurs > 1 ? ' +' + (s.nbOperateurs - 1) + ' réseau' + (s.nbOperateurs > 2 ? 'x' : '') : '';
+  return `<div class="card${open ? ' open' : ''}" data-card="${esc(aid)}">
+    <div class="card-head" data-toggle="${esc(aid)}">
+      ${logoHtml(s.operateur)}
+      <div class="card-headtxt">
+        <p class="card-name">${esc(s.nom)}</p>
+        <p class="card-op">⚡ ${esc(s.operateur)}${nbOp}</p>
+        ${summ.length ? `<p class="card-sum">${summ.join('&nbsp;·&nbsp;')}</p>` : ''}
       </div>
+      <span class="caret">▸</span>
     </div>
-    <div class="badges">${badges.join('')}</div>
-    ${mine ? myPriceLine(it) : ''}
-    ${tarif}
-    ${s.horaires ? `<div class="maj">🕑 ${esc(s.horaires)}</div>` : ''}
-    ${maj}
-    <div class="card-actions">${actions}</div>
+    <div class="card-body"${open ? '' : ' hidden'}>
+      <p class="card-addr">📍 ${esc(s.adresse)}</p>
+      ${badges.length ? `<div class="badges">${badges.join('')}</div>` : ''}
+      ${mine ? myPriceLine(it) : ''}
+      ${tarif}
+      ${s.horaires ? `<div class="maj">🕑 ${esc(s.horaires)}</div>` : ''}
+      ${maj}
+      <div class="card-actions">${actions}</div>
+    </div>
   </div>`;
 }
 
@@ -501,6 +509,15 @@ function snapOf(s) {
 }
 
 function wireCards(root) {
+  root.querySelectorAll('[data-toggle]').forEach(h => h.onclick = () => {
+    const id = h.dataset.toggle;
+    if (expandedCards.has(id)) expandedCards.delete(id); else expandedCards.add(id);
+    const open = expandedCards.has(id);
+    const cardEl = h.closest('.card');
+    cardEl.classList.toggle('open', open);
+    const body = cardEl.querySelector('.card-body');
+    if (body) body.hidden = !open;
+  });
   root.querySelectorAll('[data-add]').forEach(b => b.onclick = () => addStation(b.dataset.add));
   root.querySelectorAll('[data-del]').forEach(b => b.onclick = () => delStation(b.dataset.del));
   root.querySelectorAll('[data-price]').forEach(b => b.onclick = () => openPrice(b.dataset.price));
