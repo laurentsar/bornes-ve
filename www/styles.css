@@ -52,9 +52,11 @@ button.ghost{background:transparent;border:1px solid var(--line);color:var(--mut
   border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}
 
 .geo-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-button.geo{background:rgba(56,189,248,.16);border:1px solid var(--accent2);color:#cdeaff;
+button.geo{background:var(--card2);border:1px solid var(--line);color:#d6e2f7;
   border-radius:10px;padding:10px 14px;font-weight:700;font-size:14px;cursor:pointer}
 button.geo:active{transform:scale(.97)}
+/* bleu SEULEMENT quand le mode « autour de moi » est réellement actif */
+button.geo.active{background:rgba(56,189,248,.16);border-color:var(--accent2);color:#cdeaff}
 .badge.dist{color:#a3ffc4;border-color:#1e5a35}
 
 .filters{background:var(--bg2);border:1px solid var(--line);border-radius:14px;

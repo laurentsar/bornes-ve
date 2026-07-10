@@ -599,6 +599,7 @@ async function doSearch() {
   const term = el('communeInput').value.trim();
   if (!term) { el('searchStatus').textContent = 'Entre une commune ou une enseigne.'; return; }
   geoSort = false;                       // recherche texte : pas de tri distance
+  el('geoBtn').classList.remove('active');
   el('searchStatus').innerHTML = '<span class="spin">⏳</span> Recherche officielle…';
   el('searchList').innerHTML = '';
   try {
@@ -638,6 +639,7 @@ async function loadAround() {
   try {
     searchRaw = await fetchByBBox(userPos.lat, userPos.lon, radius);
     geoSort = true;
+    el('geoBtn').classList.add('active');   // mode "autour de moi" actif
     renderSearch();
     renderMine();                        // affiche aussi la distance sur "Mes bornes"
     if (!el('searchList').children.length) el('searchStatus').textContent = 'Aucune borne dans ce rayon.';
