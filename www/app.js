@@ -24,6 +24,7 @@ const CONNECTORS = [
 let myStations = load();          // [{id, snap, price:{type,value,note}}]
 let searchRaw = [];               // dernier résultat brut (points de charge) de la commune
 let activeTypes = new Set();      // filtres type de prise sélectionnés
+let activeOps = new Set();        // fournisseurs sélectionnés (multi)
 let editingId = null;             // borne en cours d'édition de prix
 let userPos = null;               // {lat, lon} position GPS de l'utilisateur
 let geoSort = false;              // trier la recherche par distance (mode "autour de moi")
@@ -227,25 +228,39 @@ function renderTypeChips() {
     };
   });
 }
-function fillOperatorFilter(stations) {
-  const ops = [...new Set(stations.map(s => s.operateur).filter(Boolean))].sort();
-  const sel = el('operatorFilter');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">Tous</option>' +
-    ops.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
-  if (ops.includes(cur)) sel.value = cur;
+// Chips fournisseurs (multi-sélection). Liste tous les opérateurs présents dans
+// les résultats ; garde les sélections encore valides.
+function fillOperatorChips(stations) {
+  const set = new Set();
+  stations.forEach(s => (s.operateurs && s.operateurs.length ? s.operateurs : [s.operateur]).forEach(o => o && set.add(o)));
+  const ops = [...set].sort((a, b) => a.localeCompare(b));
+  // purge les sélections disparues
+  [...activeOps].forEach(o => { if (!set.has(o)) activeOps.delete(o); });
+  el('operatorChips').innerHTML = ops.map(o =>
+    `<span class="chip${activeOps.has(o) ? ' on' : ''}" data-op="${esc(o)}">${esc(o)}</span>`
+  ).join('') || '<span class="muted" style="font-size:12px">—</span>';
+  el('opCount').textContent = activeOps.size ? '(' + activeOps.size + ' sélectionné' + (activeOps.size > 1 ? 's' : '') + ')' : '';
+  el('operatorChips').querySelectorAll('.chip').forEach(ch => {
+    ch.onclick = () => {
+      const o = ch.dataset.op;
+      activeOps.has(o) ? activeOps.delete(o) : activeOps.add(o);
+      renderSearch();
+    };
+  });
 }
 
 // ---------- rendu : recherche ----------
 function renderSearch() {
   const stations = groupStations(searchRaw);
-  fillOperatorFilter(stations);
-  const op = el('operatorFilter').value;
+  fillOperatorChips(stations);
   const minPow = num(el('powerFilter').value);
 
   const radius = num(el('radiusFilter').value) || 5;
   const filtered = stations.filter(s => {
-    if (op && s.operateur !== op) return false;
+    if (activeOps.size) {
+      const ops = (s.operateurs && s.operateurs.length) ? s.operateurs : [s.operateur];
+      if (!ops.some(o => activeOps.has(o))) return false;
+    }
     if (minPow && s.puissance < minPow) return false;
     if (activeTypes.size && !s.connectors.some(c => activeTypes.has(c))) return false;
     if (geoSort && userPos) { const d = stationDist(s); if (d != null && d > radius) return false; }
@@ -604,7 +619,6 @@ function init() {
   el('searchBtn').onclick = doSearch;
   el('communeInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
   el('geoBtn').onclick = geolocate;
-  el('operatorFilter').onchange = renderSearch;
   el('powerFilter').onchange = renderSearch;
   el('radiusFilter').onchange = () => { if (geoSort && userPos) loadAround(); else renderSearch(); };
   el('sortMine').onchange = renderMine;

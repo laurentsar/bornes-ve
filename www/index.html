@@ -70,10 +70,11 @@
         <span class="filter-label">Types de prise</span>
         <div id="typeChips" class="chips"></div>
       </div>
+      <div class="filter-group">
+        <span class="filter-label">Fournisseurs <span id="opCount" class="muted"></span></span>
+        <div id="operatorChips" class="chips ops"></div>
+      </div>
       <div class="filter-row">
-        <label class="filter-label">Fournisseur
-          <select id="operatorFilter"><option value="">Tous</option></select>
-        </label>
         <label class="filter-label">Puiss. min
           <select id="powerFilter">
             <option value="0">Toutes</option>
@@ -149,7 +150,7 @@
 
   <script>
     window.UPDATE_REPO = 'laurentsar/bornes-ve';
-    window.APP_VERSION = '1.5';
+    window.APP_VERSION = '1.6';
   </script>
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js"></script>
