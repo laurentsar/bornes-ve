@@ -1,0 +1,67 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install JS deps
+        run: npm install --no-audit --no-fund
+
+      - name: Sync Capacitor (Android)
+        run: npx cap sync android
+
+      - name: Build release APK (signed, non-debuggable)
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Read app version
+        id: version
+        run: |
+          VERSION=$(grep -oP 'versionName\s+"\K[^"]+' android/app/build.gradle)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version détectée : $VERSION"
+
+      - name: Rename APK with version
+        run: cp android/app/build/outputs/apk/release/app-release.apk "bornes-ve-${{ steps.version.outputs.version }}.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bornes-ve-release-apk
+          path: bornes-ve-${{ steps.version.outputs.version }}.apk
+          if-no-files-found: error
+
+      - name: Create / update GitHub Release
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Bornes VE v${{ steps.version.outputs.version }}
+          files: bornes-ve-${{ steps.version.outputs.version }}.apk
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,6 @@
+{
+  "appId": "com.laurent.bornesve",
+  "appName": "Bornes VE",
+  "webDir": "www",
+  "android": { "allowMixedContent": true }
+}

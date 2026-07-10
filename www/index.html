@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Bornes VE</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="img/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-logo">⚡</span>
+      <div>
+        <h1>Bornes VE</h1>
+        <p class="sub">Bornes de recharge — données officielles IRVE (gouv.fr)</p>
+      </div>
+    </div>
+    <button id="refreshAll" class="icon-btn" title="Actualiser mes bornes">🔄</button>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="mine">⭐ Mes bornes</button>
+    <button class="tab" data-tab="search">🔎 Rechercher</button>
+    <button class="tab" data-tab="info">ℹ️ Infos</button>
+  </nav>
+
+  <!-- ============================ MES BORNES ============================ -->
+  <section id="tab-mine" class="tab-panel active">
+    <div class="toolbar">
+      <label class="sort">Trier :
+        <select id="sortMine">
+          <option value="price">Prix (croissant)</option>
+          <option value="power">Puissance (décroissant)</option>
+          <option value="name">Nom</option>
+        </select>
+      </label>
+    </div>
+    <div id="mineList" class="cards"></div>
+    <p id="mineEmpty" class="empty">Aucune borne suivie.<br>Va dans <b>🔎 Rechercher</b>, choisis une commune, filtre par type de prise et fournisseur, puis ajoute tes bornes ⭐.</p>
+  </section>
+
+  <!-- ============================ RECHERCHE ============================ -->
+  <section id="tab-search" class="tab-panel">
+    <div class="search-box">
+      <input id="communeInput" type="text" inputmode="search" placeholder="Commune (ex : Colomiers)" />
+      <button id="searchBtn" class="primary">Chercher</button>
+    </div>
+
+    <div class="filters">
+      <div class="filter-group">
+        <span class="filter-label">Types de prise</span>
+        <div id="typeChips" class="chips"></div>
+      </div>
+      <div class="filter-row">
+        <label class="filter-label">Fournisseur
+          <select id="operatorFilter"><option value="">Tous</option></select>
+        </label>
+        <label class="filter-label">Puiss. min
+          <select id="powerFilter">
+            <option value="0">Toutes</option>
+            <option value="7">≥ 7 kW</option>
+            <option value="22">≥ 22 kW</option>
+            <option value="50">≥ 50 kW</option>
+            <option value="150">≥ 150 kW</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <p id="searchStatus" class="status"></p>
+    <div id="searchList" class="cards"></div>
+  </section>
+
+  <!-- ============================ INFOS ============================ -->
+  <section id="tab-info" class="tab-panel">
+    <div class="info-card">
+      <h2>À quoi sert cette appli</h2>
+      <p>Référence tes bornes de recharge VE à partir de la <b>base officielle du gouvernement</b>
+      (IRVE consolidée, <i>transport.data.gouv.fr</i>) : emplacement, opérateur, puissance, types de
+      prise, horaires, moyens de paiement et la <b>tarification déclarée</b> par l'opérateur.</p>
+      <h2>Prix</h2>
+      <p>⚠️ Il n'existe <b>pas</b> de prix de recharge officiel du gouvernement en temps réel.
+      L'appli affiche la <b>tarification déclarée</b> dans la base officielle (quand elle existe) et
+      te laisse <b>saisir ton propre prix</b> par borne (€/kWh, €/session ou €/min) pour comparer.</p>
+      <h2>Actualisation</h2>
+      <p>Le bouton 🔄 réinterroge la base officielle pour chaque borne suivie
+      (la base est mise à jour en continu ; la date <span class="pill">maj</span> indique la dernière
+      mise à jour déclarée). Tes bornes et tes prix restent enregistrés hors ligne.</p>
+      <p class="muted">Source : Base nationale IRVE consolidée (Etalab / data.gouv.fr), licence Ouverte.</p>
+    </div>
+  </section>
+
+  <!-- éditeur de prix (modale) -->
+  <div id="priceModal" class="modal" hidden>
+    <div class="modal-box">
+      <h3 id="pmTitle">Mon prix</h3>
+      <label>Type de prix
+        <select id="pmType">
+          <option value="kwh">€ / kWh</option>
+          <option value="session">€ / session</option>
+          <option value="min">€ / min</option>
+          <option value="free">Gratuit</option>
+        </select>
+      </label>
+      <label>Valeur (€)
+        <input id="pmValue" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00" />
+      </label>
+      <label>Note (facultatif)
+        <input id="pmNote" type="text" placeholder="badge, abonnement, remarque…" />
+      </label>
+      <div class="modal-actions">
+        <button id="pmCancel" class="ghost">Annuler</button>
+        <button id="pmSave" class="primary">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.UPDATE_REPO = 'laurentsar/bornes-ve';
+    window.APP_VERSION = '1.0';
+  </script>
+  <script src="app.js"></script>
+  <script src="update-check.js"></script>
+</body>
+</html>
