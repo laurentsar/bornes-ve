@@ -27,6 +27,8 @@ let activeOps = new Set();        // fournisseurs sélectionnés (multi)
 let editingId = null;             // borne en cours d'édition de prix
 let userPos = null;               // {lat, lon} position GPS de l'utilisateur
 let geoSort = false;              // trier la recherche par distance (mode "autour de moi")
+let expandedCities = new Set();   // villes dépliées dans "Mes bornes" (fermées par défaut)
+let _revGeoDone = new Set();      // favoris déjà reverse-géocodés (ville manquante)
 
 // ---------- utils ----------
 function load() {
@@ -363,12 +365,49 @@ function renderMine() {
     if (a === 'Autres') return 1; if (b === 'Autres') return -1;
     return a.localeCompare(b);
   });
+  // Un menu dépliant par ville, FERMÉ par défaut (expandedCities vide au départ).
   list.innerHTML = villes.map(v => {
     const g = groups.get(v);
-    return `<div class="city-head">🏙️ ${esc(v)} <span class="city-n">${g.length}</span></div>` +
-      g.map(it => card(it.snap, true, it)).join('');
+    const open = expandedCities.has(v);
+    return `<div class="city-group">
+      <button class="city-head${open ? ' open' : ''}" data-city="${esc(v)}">
+        <span class="caret">▸</span><span class="city-name">🏙️ ${esc(v)}</span>
+        <span class="city-n">${g.length}</span></button>
+      <div class="city-body"${open ? '' : ' hidden'}>${g.map(it => card(it.snap, true, it)).join('')}</div>
+    </div>`;
   }).join('');
   wireCards(list);
+  list.querySelectorAll('.city-head').forEach(h => {
+    h.onclick = () => {
+      const v = h.dataset.city;
+      if (expandedCities.has(v)) expandedCities.delete(v); else expandedCities.add(v);
+      const openNow = expandedCities.has(v);
+      h.classList.toggle('open', openNow);
+      const body = h.nextElementSibling;
+      if (body) body.hidden = !openNow;
+    };
+  });
+  fillMissingCities();   // complète les villes manquantes (reverse-géocodage), async
+}
+
+// Reverse-géocode les favoris sans commune (coords → ville) pour que chaque favori
+// ait toujours un nom de ville (regroupement propre au lieu de « Autres »).
+async function fillMissingCities() {
+  const todo = myStations.filter(m => !(m.snap.commune || '').trim() &&
+    isFinite(num(m.snap.lat)) && num(m.snap.lat) !== 0 && !_revGeoDone.has(m.id));
+  if (!todo.length) return;
+  let changed = false;
+  for (const m of todo) {
+    _revGeoDone.add(m.id);
+    try {
+      const r = await fetch('https://api-adresse.data.gouv.fr/reverse/?lat=' + num(m.snap.lat) + '&lon=' + num(m.snap.lon));
+      if (!r.ok) continue;
+      const j = await r.json();
+      const p = ((j.features || [])[0] || {}).properties;
+      if (p && p.city) { m.snap.commune = p.city; changed = true; }
+    } catch (e) { /* silencieux */ }
+  }
+  if (changed) { save(); renderMine(); }
 }
 function priceSortVal(it) {
   const p = it.price;
@@ -594,26 +633,23 @@ async function loadAround() {
 function capGeo() {
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation) || null;
 }
-// Acquisition SILENCIEUSE de la position (au démarrage) pour afficher le
-// kilométrage sur toutes les cartes, sans lancer une recherche « autour de moi ».
+// Acquisition SILENCIEUSE de la position au démarrage — UNIQUEMENT si la permission
+// est DÉJÀ accordée (aucune demande auto, « autour de moi » n'est pas activé par
+// défaut). Sinon on attend que l'utilisateur touche le bouton 📍.
 async function ensurePosition() {
   if (userPos) return;
   const G = capGeo();
   try {
-    if (G) {
-      let st = 'granted';
-      if (G.checkPermissions) {
-        const p = await G.checkPermissions();
-        st = p && (p.location || p.coarseLocation);
-        if (st === 'prompt' || st === 'prompt-with-rationale') {
-          const rp = await G.requestPermissions();
-          st = rp && (rp.location || rp.coarseLocation);
-        }
-      }
-      if (st === 'denied') return;
+    if (G && G.checkPermissions) {
+      const p = await G.checkPermissions();
+      const st = p && (p.location || p.coarseLocation);
+      if (st !== 'granted') return;   // pas déjà autorisé → on ne demande rien
       const pos = await G.getCurrentPosition({ enableHighAccuracy: false, timeout: 10000 });
       userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-    } else if (navigator.geolocation) {
+    } else if (navigator.permissions && navigator.geolocation) {
+      // Navigateur : on n'interroge la position que si déjà accordée (pas de prompt).
+      const status = await navigator.permissions.query({ name: 'geolocation' }).catch(() => null);
+      if (!status || status.state !== 'granted') return;
       await new Promise(res => navigator.geolocation.getCurrentPosition(
         p => { userPos = { lat: p.coords.latitude, lon: p.coords.longitude }; res(); },
         () => res(),
