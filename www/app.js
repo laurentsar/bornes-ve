@@ -555,6 +555,34 @@ function showMap() {
   }, 60);
 }
 
+// ---------- version / mise à jour manuelle ----------
+function cmpVer(a, b) {
+  const x = String(a).replace(/^v/, '').split('.'), y = String(b).replace(/^v/, '').split('.');
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+async function checkUpdate() {
+  const st = el('updState');
+  st.textContent = ' · vérification…';
+  try {
+    const r = await fetch('https://api.github.com/repos/' + (window.UPDATE_REPO) +
+      '/releases/latest?_=' + Date.now(), { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rel = await r.json();
+    const latest = String(rel.tag_name || '').replace(/^v/, '');
+    if (cmpVer(latest, window.APP_VERSION) > 0) {
+      st.innerHTML = ' · <b style="color:#22c55e">v' + esc(latest) + ' disponible !</b>';
+      const apk = (rel.assets || []).find(a => /\.apk$/i.test(a.name));
+      window.open(apk ? apk.browser_download_url : rel.html_url, '_blank');
+    } else {
+      st.innerHTML = ' · <span style="color:#22c55e">à jour ✅</span>';
+    }
+  } catch (e) { st.textContent = ' · échec de la vérification (hors ligne ?)'; }
+}
+
 // ---------- tabs ----------
 function initTabs() {
   document.querySelectorAll('.tab').forEach(t => {
@@ -581,6 +609,9 @@ function init() {
   el('radiusFilter').onchange = () => { if (geoSort && userPos) loadAround(); else renderSearch(); };
   el('sortMine').onchange = renderMine;
   el('refreshAll').onclick = refreshAll;
+  el('appVersion').textContent = 'v' + (window.APP_VERSION || '?');
+  el('verChip').textContent = 'v' + (window.APP_VERSION || '?');
+  el('checkUpdBtn').onclick = checkUpdate;
   el('pmCancel').onclick = closePrice;
   el('pmSave').onclick = savePrice;
   el('priceModal').addEventListener('click', e => { if (e.target === el('priceModal')) closePrice(); });

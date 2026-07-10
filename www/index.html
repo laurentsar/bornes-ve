@@ -15,7 +15,7 @@
     <div class="brand">
       <span class="brand-logo">⚡</span>
       <div>
-        <h1>Bornes VE</h1>
+        <h1>Bornes VE <span id="verChip" class="ver-chip"></span></h1>
         <p class="sub">Bornes de recharge — données officielles IRVE (gouv.fr)</p>
       </div>
     </div>
@@ -112,6 +112,13 @@
       (la base est mise à jour en continu ; la date <span class="pill">maj</span> indique la dernière
       mise à jour déclarée). Tes bornes et tes prix restent enregistrés hors ligne.</p>
       <p class="muted">Source : Base nationale IRVE consolidée (Etalab / data.gouv.fr), licence Ouverte.</p>
+      <h2>Version & mises à jour</h2>
+      <p>Version installée : <b id="appVersion">—</b><span id="updState" class="muted"></span></p>
+      <p class="muted">Mise à jour automatique : une bannière s'affiche dès qu'une version plus
+      récente est publiée. Tu peux aussi vérifier maintenant :</p>
+      <button id="checkUpdBtn" class="ghost">🔄 Vérifier les mises à jour</button>
+      <p class="muted" style="margin-top:10px">Code source (public) :
+      <a href="https://github.com/laurentsar/bornes-ve" target="_blank" rel="noopener">github.com/laurentsar/bornes-ve</a></p>
     </div>
   </section>
 
@@ -142,7 +149,7 @@
 
   <script>
     window.UPDATE_REPO = 'laurentsar/bornes-ve';
-    window.APP_VERSION = '1.4';
+    window.APP_VERSION = '1.5';
   </script>
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js"></script>
