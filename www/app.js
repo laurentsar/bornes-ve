@@ -657,6 +657,30 @@ function cmpVer(a, b) {
   }
   return 0;
 }
+// MAJ in-app : si le plugin natif est présent (APK Android), on télécharge et on
+// INSTALLE l'APK directement (comme Flux RSS) ; sinon on ouvre le lien (PWA/navigateur).
+// `statusEl` (optionnel) reçoit l'état ; `onEnd` rétablit l'UI en cas d'échec.
+async function installApkUpdate(apkUrl, statusEl, onEnd) {
+  const UP = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.UpdatePlugin;
+  if (UP && apkUrl) {
+    if (statusEl) statusEl.textContent = '⏳ Téléchargement…';
+    try {
+      await UP.downloadAndInstall({ url: apkUrl });
+    } catch (e) {
+      const msg = (e && e.message) || String(e);
+      if (/permission/i.test(msg)) {
+        alert("Autorise « Installer des applis inconnues » pour Bornes VE dans les réglages Android, puis réessaie.");
+      } else {
+        alert('Échec de la mise à jour : ' + msg);
+      }
+      if (onEnd) onEnd();
+    }
+    return;
+  }
+  window.open(apkUrl, '_blank');  // PWA / pas de plugin : téléchargement navigateur
+  if (onEnd) onEnd();
+}
+window.installApkUpdate = installApkUpdate;  // utilisé aussi par update-check.js
 async function checkUpdate() {
   const st = el('updState');
   st.textContent = ' · vérification…';
@@ -669,7 +693,7 @@ async function checkUpdate() {
     if (cmpVer(latest, window.APP_VERSION) > 0) {
       st.innerHTML = ' · <b style="color:#22c55e">v' + esc(latest) + ' disponible !</b>';
       const apk = (rel.assets || []).find(a => /\.apk$/i.test(a.name));
-      window.open(apk ? apk.browser_download_url : rel.html_url, '_blank');
+      installApkUpdate(apk ? apk.browser_download_url : rel.html_url, st);
     } else {
       st.innerHTML = ' · <span style="color:#22c55e">à jour ✅</span>';
     }
