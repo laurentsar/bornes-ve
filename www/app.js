@@ -23,7 +23,6 @@ const CONNECTORS = [
 // ---------- état ----------
 let myStations = load();          // [{id, snap, price:{type,value,note}}]
 let searchRaw = [];               // dernier résultat brut (points de charge) de la commune
-let activeTypes = new Set();      // filtres type de prise sélectionnés
 let activeOps = new Set();        // fournisseurs sélectionnés (multi)
 let editingId = null;             // borne en cours d'édition de prix
 let userPos = null;               // {lat, lon} position GPS de l'utilisateur
@@ -68,24 +67,35 @@ function fmtDist(km) {
   return km < 1 ? Math.round(km * 1000) + ' m' : km.toFixed(km < 10 ? 1 : 0) + ' km';
 }
 
-// Pastille-logo d'un opérateur : couleur de marque connue sinon couleur
-// déterministe (hash du nom) + initiales. Autonome, pas de logo externe.
+// Logo d'un opérateur : favicon OFFICIEL de la marque (via Google) quand le
+// réseau est connu (domaine ci-dessous), avec repli sur une pastille initiales.
 const BRANDS = [
-  { re: /tesla/i,            c: '#e82127', t: 'T'  },
-  { re: /lidl/i,             c: '#0050aa', t: 'Li' },
-  { re: /ionity/i,           c: '#2b2b40', t: 'IO' },
-  { re: /total|totalenergies/i, c: '#e2001a', t: 'TE' },
-  { re: /izivia/i,           c: '#00a3a1', t: 'IZ' },
-  { re: /freshmile/i,        c: '#5b2a86', t: 'FM' },
-  { re: /driveco/i,          c: '#00b2a9', t: 'DC' },
-  { re: /allego/i,           c: '#e5007d', t: 'AL' },
-  { re: /electra/i,          c: '#1b2440', t: 'EL' },
-  { re: /engie|vianeo/i,     c: '#0aa89e', t: 'EN' },
-  { re: /bouygues/i,         c: '#e2001a', t: 'BY' },
-  { re: /shell/i,            c: '#ed1c24', t: 'SH' },
-  { re: /fastned/i,          c: '#ffce00', t: 'FN' },
-  { re: /powerdot|power dot/i, c: '#ff5a00', t: 'PD' },
-  { re: /chargepoint/i,      c: '#f7901e', t: 'CP' },
+  { re: /tesla/i,            c: '#e82127', t: 'T',  d: 'tesla.com' },
+  { re: /lidl/i,             c: '#0050aa', t: 'Li', d: 'lidl.fr' },
+  { re: /ionity/i,           c: '#2b2b40', t: 'IO', d: 'ionity.eu' },
+  { re: /total|totalenergies/i, c: '#e2001a', t: 'TE', d: 'totalenergies.fr' },
+  { re: /izivia/i,           c: '#00a3a1', t: 'IZ', d: 'izivia.com' },
+  { re: /freshmile/i,        c: '#5b2a86', t: 'FM', d: 'freshmile.com' },
+  { re: /driveco/i,          c: '#00b2a9', t: 'DC', d: 'driveco.com' },
+  { re: /allego/i,           c: '#e5007d', t: 'AL', d: 'allego.eu' },
+  { re: /electra/i,          c: '#1b2440', t: 'EL', d: 'electra.com' },
+  { re: /engie|vianeo/i,     c: '#0aa89e', t: 'EN', d: 'engie.fr' },
+  { re: /bouygues/i,         c: '#e2001a', t: 'BY', d: 'bouygues-es.com' },
+  { re: /shell/i,            c: '#ed1c24', t: 'SH', d: 'shell.fr' },
+  { re: /fastned/i,          c: '#ffce00', t: 'FN', d: 'fastnedcharging.com' },
+  { re: /power ?dot/i,       c: '#ff5a00', t: 'PD', d: 'power-dot.com' },
+  { re: /chargepoint/i,      c: '#f7901e', t: 'CP', d: 'chargepoint.com' },
+  { re: /qovoltis/i,         c: '#1f6feb', t: 'QO', d: 'qovoltis.com' },
+  { re: /atlante/i,          c: '#00a651', t: 'AT', d: 'atlante.com' },
+  { re: /zunder/i,           c: '#ff4d00', t: 'ZU', d: 'zunder.com' },
+  { re: /bump/i,             c: '#00c2a8', t: 'BU', d: 'bump-charge.com' },
+  { re: /carrefour/i,        c: '#0055a4', t: 'CA', d: 'carrefour.fr' },
+  { re: /e\.?\s?leclerc|leclerc/i, c: '#0066b3', t: 'LE', d: 'e.leclerc' },
+  { re: /intermarch/i,       c: '#e2001a', t: 'IN', d: 'intermarche.com' },
+  { re: /auchan/i,           c: '#e2001a', t: 'AU', d: 'auchan.fr' },
+  { re: /(syst[eè]me|super|hyper) u|magasins? u/i, c: '#e2001a', t: 'U', d: 'magasins-u.com' },
+  { re: /monta/i,            c: '#111111', t: 'MO', d: 'monta.com' },
+  { re: /last mile|lmc/i,    c: '#7c3aed', t: 'LM', d: 'lastmilesolutions.com' },
 ];
 function initials(name) {
   const w = String(name || '').replace(/[^A-Za-zÀ-ÿ0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean);
@@ -102,7 +112,13 @@ function logoHtml(op) {
   const brand = BRANDS.find(b => b.re.test(op || ''));
   const color = brand ? brand.c : `hsl(${hashHue(op || '')} 55% 40%)`;
   const txt = brand ? brand.t : initials(op);
-  return `<div class="logo" style="background:${color}">${esc(txt)}</div>`;
+  // Pastille initiales = fond/repli. Si la marque est connue, on superpose son
+  // favicon officiel ; en cas d'échec de chargement, l'img se retire (onerror).
+  const badge = `<span class="logo" style="background:${color}">${esc(txt)}</span>`;
+  const img = brand && brand.d
+    ? `<img class="logo-img" src="https://www.google.com/s2/favicons?domain=${brand.d}&sz=64" alt="" loading="lazy" onerror="this.remove()">`
+    : '';
+  return `<span class="logo-wrap">${badge}${img}</span>`;
 }
 
 // Connecteurs présents sur un point de charge -> liste de labels.
@@ -136,14 +152,16 @@ function groupStations(rows) {
         adresse: r.adresse_station || '',
         commune: r.consolidated_commune || '',
         lat: r.consolidated_latitude, lon: r.consolidated_longitude,
-        puissance: 0, connectors: new Set(), pdc: 0, ids: new Set(),
+        puissance: 0, connectors: new Set(), pdcIds: new Set(), pdcRows: 0, ids: new Set(),
         gratuit: false, cb: false,
         tarification: r.tarification || '', horaires: r.horaires || '',
         maj: r.date_maj || r.last_modified || '',
       };
       map.set(key, s);
     }
-    s.pdc += 1;
+    // Nb de pompes = points de charge DISTINCTS (la base contient des doublons de
+    // lignes) : on compte les id_pdc_itinerance uniques, sinon les lignes sans id.
+    if (r.id_pdc_itinerance) s.pdcIds.add(r.id_pdc_itinerance); else s.pdcRows += 1;
     s.puissance = Math.max(s.puissance, num(r.puissance_nominale));
     connectorsOf(r).forEach(c => s.connectors.add(c));
     const op = r.nom_operateur || r.nom_enseigne || r.nom_amenageur;
@@ -160,6 +178,7 @@ function groupStations(rows) {
     const ops = [...s.operateurs];
     return {
       ...s, connectors: [...s.connectors], ids: [...s.ids],
+      pdc: s.pdcIds.size || s.pdcRows,
       operateurs: ops, operateur: ops[0] || '—', nbOperateurs: ops.length,
     };
   });
@@ -217,19 +236,6 @@ function fetchByBBox(lat, lon, radiusKm) {
 }
 
 // ---------- rendu : filtres ----------
-function renderTypeChips() {
-  el('typeChips').innerHTML = CONNECTORS.map(c =>
-    `<span class="chip${activeTypes.has(c.label) ? ' on' : ''}" data-type="${esc(c.label)}">${esc(c.label)}</span>`
-  ).join('');
-  el('typeChips').querySelectorAll('.chip').forEach(ch => {
-    ch.onclick = () => {
-      const t = ch.dataset.type;
-      activeTypes.has(t) ? activeTypes.delete(t) : activeTypes.add(t);
-      ch.classList.toggle('on');
-      renderSearch();
-    };
-  });
-}
 // Normalisation d'un nom d'opérateur (casse/espaces) pour dédupliquer les
 // variantes (« Lidl France » vs « LIDL France »).
 function opNorm(o) { return String(o || '').trim().toLowerCase(); }
@@ -242,33 +248,35 @@ function opDisplayMap(stations) {
     .forEach(o => { if (o) { const n = opNorm(o); if (!disp.has(n)) disp.set(n, o); } }));
   return disp;
 }
-function updateOpBtn(disp) {
+let opDisp = new Map();   // norm -> libellé affiché (dernier menu construit)
+function updateOpBtn() {
   const btn = el('opDropBtn');
   let label;
   if (activeOps.size === 0) label = 'Tous les fournisseurs';
-  else if (activeOps.size === 1) label = disp.get([...activeOps][0]) || '1 fournisseur';
+  else if (activeOps.size === 1) label = opDisp.get([...activeOps][0]) || '1 fournisseur';
   else label = activeOps.size + ' fournisseurs';
   btn.innerHTML = esc(label) + ' <span class="ms-caret">▾</span>';
   btn.classList.toggle('has', activeOps.size > 0);
 }
 function renderOpMenu(stations) {
-  const disp = opDisplayMap(stations);
-  [...activeOps].forEach(n => { if (!disp.has(n)) activeOps.delete(n); });  // purge disparus
-  const entries = [...disp.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  opDisp = opDisplayMap(stations);
+  [...activeOps].forEach(n => { if (!opDisp.has(n)) activeOps.delete(n); });  // purge disparus
+  const entries = [...opDisp.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   el('opList').innerHTML = entries.length ? entries.map(([n, d]) =>
     `<label class="ms-opt" data-op="${esc(n)}" data-name="${esc(d.toLowerCase())}">
       <input type="checkbox" ${activeOps.has(n) ? 'checked' : ''}><span>${esc(d)}</span></label>`
   ).join('') : '<div class="ms-empty">Aucun fournisseur (lance une recherche).</div>';
   el('opList').querySelectorAll('.ms-opt input').forEach(cb => {
+    // onchange met à jour les résultats SANS reconstruire le menu (le menu reste ouvert).
     cb.onchange = () => {
       const n = cb.closest('.ms-opt').dataset.op;
       cb.checked ? activeOps.add(n) : activeOps.delete(n);
-      updateOpBtn(disp);
-      renderSearch();
+      updateOpBtn();
+      renderResults();
     };
   });
   filterOpList();
-  updateOpBtn(disp);
+  updateOpBtn();
 }
 // Filtre visuel de la liste selon le champ de recherche du menu.
 function filterOpList() {
@@ -279,19 +287,24 @@ function filterOpList() {
 }
 
 // ---------- rendu : recherche ----------
+// renderSearch = après une NOUVELLE recherche : (re)construit le menu fournisseurs
+// PUIS les résultats. renderResults = juste re-filtrer/afficher (changement d'option),
+// SANS reconstruire le menu (sinon le clic sur une case détache le DOM et ferme le menu).
+let currentStations = [];
 function renderSearch() {
-  const stations = groupStations(searchRaw);
-  renderOpMenu(stations);
+  currentStations = groupStations(searchRaw);
+  renderOpMenu(currentStations);
+  renderResults();
+}
+function renderResults() {
   const minPow = num(el('powerFilter').value);
-
   const radius = num(el('radiusFilter').value) || 5;
-  const filtered = stations.filter(s => {
+  const filtered = currentStations.filter(s => {
     if (activeOps.size) {
       const ops = ((s.operateurs && s.operateurs.length) ? s.operateurs : [s.operateur]).map(opNorm);
       if (!ops.some(o => activeOps.has(o))) return false;
     }
     if (minPow && s.puissance < minPow) return false;
-    if (activeTypes.size && !s.connectors.some(c => activeTypes.has(c))) return false;
     if (geoSort && userPos) { const d = stationDist(s); if (d != null && d > radius) return false; }
     return true;
   });
@@ -552,7 +565,7 @@ async function ensurePosition() {
         { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }));
     }
   } catch (e) { /* silencieux */ }
-  if (userPos) { renderMine(); if (searchRaw.length) renderSearch(); }
+  if (userPos) { renderMine(); if (searchRaw.length) renderResults(); }
 }
 
 async function geolocate() {
@@ -679,13 +692,12 @@ function initTabs() {
 // ---------- init ----------
 function init() {
   initTabs();
-  renderTypeChips();
   renderMine();
   el('searchBtn').onclick = doSearch;
   el('communeInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
   el('geoBtn').onclick = geolocate;
-  el('powerFilter').onchange = renderSearch;
-  el('radiusFilter').onchange = () => { if (geoSort && userPos) loadAround(); else renderSearch(); };
+  el('powerFilter').onchange = renderResults;
+  el('radiusFilter').onchange = () => { if (geoSort && userPos) loadAround(); else renderResults(); };
   el('sortMine').onchange = renderMine;
   el('refreshAll').onclick = refreshAll;
   el('appVersion').textContent = 'v' + (window.APP_VERSION || '?');
@@ -696,11 +708,20 @@ function init() {
   el('priceModal').addEventListener('click', e => { if (e.target === el('priceModal')) closePrice(); });
 
   // menu déroulant multichoix fournisseurs
-  el('opDropBtn').onclick = () => { el('opDropPanel').hidden = !el('opDropPanel').hidden; };
+  el('opDropBtn').onclick = e => { e.stopPropagation(); el('opDropPanel').hidden = !el('opDropPanel').hidden; };
   el('opSearch').oninput = filterOpList;
-  el('opClear').onclick = () => { activeOps.clear(); renderSearch(); };
+  el('opClear').onclick = () => {
+    activeOps.clear();
+    el('opList').querySelectorAll('input').forEach(cb => { cb.checked = false; });
+    updateOpBtn();
+    renderResults();
+  };
+  // Fermer le menu si clic hors de .ms (garde-fou si la cible est détachée du DOM).
   document.addEventListener('click', e => {
-    if (!e.target.closest('.ms')) el('opDropPanel').hidden = true;
+    if (el('opDropPanel').hidden) return;
+    const t = e.target;
+    if (t && t.isConnected && t.closest && t.closest('.ms')) return;
+    el('opDropPanel').hidden = true;
   });
 
   if ('serviceWorker' in navigator) {
