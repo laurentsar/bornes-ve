@@ -29,7 +29,8 @@ p{margin:6px 0}
 .tabs{display:flex;gap:6px;padding:10px 12px;position:sticky;top:69px;z-index:15;
   background:var(--bg);border-bottom:1px solid var(--line)}
 .tab{flex:1;background:transparent;border:1px solid var(--line);color:var(--muted);
-  padding:9px 6px;border-radius:11px;font-size:13.5px;font-weight:600;cursor:pointer}
+  padding:9px 4px;border-radius:11px;font-size:12.5px;font-weight:600;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
 .tab.active{background:var(--card2);color:var(--txt);border-color:var(--accent2)}
 
 .tab-panel{display:none;padding:12px 12px 0}
@@ -154,8 +155,14 @@ button.geo:active{transform:scale(.97)}
 
 .empty{color:var(--muted);text-align:center;padding:36px 20px;font-size:14px;line-height:1.6}
 
+.map-wrap{position:relative}
 #map{height:calc(100vh - 175px);min-height:340px;border-radius:14px;overflow:hidden;
   border:1px solid var(--line);background:var(--bg2)}
+.recenter{position:absolute;right:12px;bottom:12px;z-index:500;width:48px;height:48px;
+  border-radius:14px;background:var(--card);border:1px solid var(--accent2);color:#cdeaff;
+  font-size:22px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.45)}
+.recenter:active{transform:scale(.94)}
+.recenter[hidden]{display:none}
 .leaflet-popup-content{font:13px/1.4 system-ui,sans-serif;margin:10px 12px}
 .leaflet-popup-content b{font-size:14px}
 .leaflet-popup-content .p-op{color:#0a7d3a;font-weight:600}

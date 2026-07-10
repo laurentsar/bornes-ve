@@ -721,10 +721,57 @@ function mapPopup(it) {
     <div class="p-op">⚡ ${esc(s.operateur)}${s.puissance ? ' · ' + s.puissance + ' kW' : ''}</div>
     <div>${esc(s.adresse || '')}</div>${price}${nav}`;
 }
+// Récupère la position en DEMANDANT la permission si besoin (utilisé par le bouton
+// « autour de moi » et le recentrage carte).
+async function getPosition() {
+  const G = capGeo();
+  if (G) {
+    if (G.checkPermissions) {
+      const p = await G.checkPermissions();
+      let st = p && (p.location || p.coarseLocation);
+      if (st === 'prompt' || st === 'prompt-with-rationale') {
+        const rp = await G.requestPermissions();
+        st = rp && (rp.location || rp.coarseLocation);
+      }
+      if (st === 'denied') throw new Error('refusée');
+    }
+    const pos = await G.getCurrentPosition({ enableHighAccuracy: true, timeout: 12000 });
+    return { lat: pos.coords.latitude, lon: pos.coords.longitude };
+  }
+  if (navigator.geolocation) {
+    return await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(
+      p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+      e => rej(new Error(e && e.message || 'indisponible')),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }));
+  }
+  throw new Error('indisponible');
+}
+// Recentre la carte sur la position de l'utilisateur (l'acquiert si nécessaire).
+async function recenterMap() {
+  const btn = el('recenterBtn');
+  btn.textContent = '⏳';
+  try {
+    if (!userPos) userPos = await getPosition();
+  } catch (e) {
+    btn.textContent = '📍';
+    alert('Localisation indisponible (' + ((e && e.message) || e) + ').');
+    return;
+  }
+  btn.textContent = '📍';
+  if (map && userPos) {
+    if (meMarker) meMarker.remove();
+    meMarker = L.circleMarker([userPos.lat, userPos.lon], {
+      radius: 8, color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.9,
+    }).addTo(map).bindPopup('📍 Ma position');
+    map.setView([userPos.lat, userPos.lon], 14);
+    renderMine();  // met à jour les distances des favoris
+  }
+}
 function showMap() {
   const withCoords = myStations.filter(m => isFinite(num(m.snap.lat)) && isFinite(num(m.snap.lon)) && num(m.snap.lat) !== 0);
   el('mapEmpty').style.display = withCoords.length ? 'none' : 'block';
   el('map').style.display = withCoords.length ? 'block' : 'none';
+  el('recenterBtn').hidden = !withCoords.length;
   if (!withCoords.length) return;
 
   if (!map) {
@@ -909,6 +956,7 @@ function init() {
   el('radiusFilter').onchange = () => { if (geoSort && userPos) loadAround(); else renderResults(); };
   el('sortMine').onchange = renderMine;
   el('refreshAll').onclick = refreshAll;
+  el('recenterBtn').onclick = recenterMap;
   el('appVersion').textContent = 'v' + (window.APP_VERSION || '?');
   el('verChip').textContent = 'v' + (window.APP_VERSION || '?');
   el('checkUpdBtn').onclick = checkUpdate;

@@ -99,7 +99,10 @@
   <!-- ============================ CARTE ============================ -->
   <section id="tab-map" class="tab-panel">
     <p id="mapEmpty" class="empty" style="display:none">Aucune borne en favori à afficher.<br>Ajoute des bornes depuis <b>🔎 Rechercher</b>.</p>
-    <div id="map"></div>
+    <div class="map-wrap">
+      <div id="map"></div>
+      <button id="recenterBtn" class="recenter" title="Recentrer sur ma position" hidden>📍</button>
+    </div>
   </section>
 
   <!-- ============================ INFOS ============================ -->
@@ -182,7 +185,7 @@
 
   <script>
     window.UPDATE_REPO = 'laurentsar/bornes-ve';
-    window.APP_VERSION = '1.18';
+    window.APP_VERSION = '1.19';
   </script>
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js"></script>
