@@ -109,37 +109,57 @@ function connectorsOf(row) {
   return CONNECTORS.filter(c => truthy(row[c.key])).map(c => c.label);
 }
 
-// Regroupe des points de charge (rows) en STATIONS par id_station_itinerance.
+// Clé de LIEU : mêmes coordonnées (arrondies ~11 m) = même endroit ; sinon adresse ;
+// sinon id station. Permet de factoriser plusieurs stations/pompes au même lieu.
+function locKey(r) {
+  const lat = parseFloat(r.consolidated_latitude), lon = parseFloat(r.consolidated_longitude);
+  if (isFinite(lat) && isFinite(lon) && (lat || lon)) return lat.toFixed(4) + ',' + lon.toFixed(4);
+  const addr = (r.adresse_station || '').trim().toLowerCase();
+  if (addr) return 'a:' + addr;
+  return 'i:' + (r.id_station_itinerance || r.nom_station || '');
+}
+// Regroupe les points de charge (rows) par LIEU : additionne les pompes (pdc),
+// unionne les prises/opérateurs, garde la puissance max. Un lieu = une carte.
 function groupStations(rows) {
   const map = new Map();
   for (const r of rows) {
-    const id = r.id_station_itinerance || r.id_station_local ||
-               (r.nom_station + '|' + r.adresse_station);
-    let s = map.get(id);
+    const key = locKey(r);
+    let s = map.get(key);
     if (!s) {
       s = {
-        id,
+        id: key,
         nom: r.nom_station || r.nom_enseigne || 'Station',
-        operateur: r.nom_operateur || r.nom_enseigne || r.nom_amenageur || '—',
+        operateurs: new Set(),
         adresse: r.adresse_station || '',
         commune: r.consolidated_commune || '',
         lat: r.consolidated_latitude, lon: r.consolidated_longitude,
-        puissance: 0, connectors: new Set(), pdc: 0,
-        gratuit: truthy(r.gratuit), cb: truthy(r.paiement_cb),
+        puissance: 0, connectors: new Set(), pdc: 0, ids: new Set(),
+        gratuit: false, cb: false,
         tarification: r.tarification || '', horaires: r.horaires || '',
         maj: r.date_maj || r.last_modified || '',
       };
-      map.set(id, s);
+      map.set(key, s);
     }
     s.pdc += 1;
     s.puissance = Math.max(s.puissance, num(r.puissance_nominale));
     connectorsOf(r).forEach(c => s.connectors.add(c));
+    const op = r.nom_operateur || r.nom_enseigne || r.nom_amenageur;
+    if (op) s.operateurs.add(op);
+    if (r.id_station_itinerance) s.ids.add(r.id_station_itinerance);
     if (truthy(r.gratuit)) s.gratuit = true;
     if (truthy(r.paiement_cb)) s.cb = true;
     if (!s.tarification && r.tarification) s.tarification = r.tarification;
     if (!s.horaires && r.horaires) s.horaires = r.horaires;
+    const m = r.date_maj || r.last_modified || '';
+    if (m > s.maj) s.maj = m;
   }
-  return [...map.values()].map(s => ({ ...s, connectors: [...s.connectors] }));
+  return [...map.values()].map(s => {
+    const ops = [...s.operateurs];
+    return {
+      ...s, connectors: [...s.connectors], ids: [...s.ids],
+      operateurs: ops, operateur: ops[0] || '—', nbOperateurs: ops.length,
+    };
+  });
 }
 
 // ---------- API ----------
@@ -281,7 +301,7 @@ function card(s, mine, it) {
   const d = stationDist(s);
   if (d != null) badges.push(`<span class="badge dist">📍 ${fmtDist(d)}</span>`);
   if (s.puissance) badges.push(`<span class="badge pow">${s.puissance} kW</span>`);
-  if (s.pdc) badges.push(`<span class="badge">${s.pdc} pdc</span>`);
+  if (s.pdc) badges.push(`<span class="badge">⚡ ${s.pdc} pompe${s.pdc > 1 ? 's' : ''}</span>`);
   s.connectors.forEach(c => badges.push(`<span class="badge">${esc(c)}</span>`));
   if (s.gratuit) badges.push('<span class="badge free">Gratuit</span>');
   if (s.cb) badges.push('<span class="badge cb">CB</span>');
@@ -311,7 +331,7 @@ function card(s, mine, it) {
         ${logoHtml(s.operateur)}
         <div style="min-width:0">
           <p class="card-name">${esc(s.nom)}</p>
-          <p class="card-op">⚡ ${esc(s.operateur)}</p>
+          <p class="card-op">⚡ ${esc(s.operateur)}${s.nbOperateurs > 1 ? ' +' + (s.nbOperateurs - 1) + ' réseau' + (s.nbOperateurs > 2 ? 'x' : '') : ''}</p>
           <p class="card-addr">📍 ${esc(s.adresse)}</p>
         </div>
       </div>
@@ -328,9 +348,11 @@ function card(s, mine, it) {
 // stocke le "snap" (sous-ensemble sérialisable) d'une station groupée
 function snapOf(s) {
   return {
-    id: s.id, nom: s.nom, operateur: s.operateur, adresse: s.adresse, commune: s.commune,
+    id: s.id, nom: s.nom, operateur: s.operateur, nbOperateurs: s.nbOperateurs || 1,
+    adresse: s.adresse, commune: s.commune,
     lat: s.lat, lon: s.lon, puissance: s.puissance, pdc: s.pdc, connectors: s.connectors,
-    gratuit: s.gratuit, cb: s.cb, tarification: s.tarification, horaires: s.horaires, maj: s.maj,
+    ids: s.ids || [], gratuit: s.gratuit, cb: s.cb,
+    tarification: s.tarification, horaires: s.horaires, maj: s.maj,
   };
 }
 
@@ -386,8 +408,20 @@ async function refreshAll() {
   let ok = 0;
   for (const it of myStations) {
     try {
-      const rows = await fetchByStationId(it.id);
-      if (rows.length) { it.snap = snapOf(groupStations(rows)[0]); ok++; }
+      let rows = [];
+      const ids = (it.snap && it.snap.ids) || [];
+      if (ids.length) {
+        for (const id of ids) rows = rows.concat(await fetchByStationId(id));
+      } else if (isFinite(num(it.snap.lat)) && num(it.snap.lat) !== 0) {
+        rows = await fetchByBBox(num(it.snap.lat), num(it.snap.lon), 0.3);  // ~300 m
+      } else {
+        rows = await fetchByStationId(it.id);
+      }
+      if (rows.length) {
+        const grouped = groupStations(rows);
+        const g = grouped.find(x => x.id === it.id) || grouped[0];
+        if (g) { it.snap = snapOf(g); ok++; }
+      }
     } catch (e) { /* on garde le cache */ }
   }
   save();
