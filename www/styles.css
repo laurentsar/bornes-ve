@@ -29,8 +29,8 @@ p{margin:6px 0}
 .tabs{display:flex;gap:6px;padding:10px 12px;position:sticky;top:69px;z-index:15;
   background:var(--bg);border-bottom:1px solid var(--line)}
 .tab{flex:1;background:transparent;border:1px solid var(--line);color:var(--muted);
-  padding:9px 4px;border-radius:11px;font-size:12.5px;font-weight:600;cursor:pointer;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+  padding:9px 4px;border-radius:11px;font-size:13px;font-weight:600;cursor:pointer;
+  white-space:nowrap;line-height:1.2}
 .tab.active{background:var(--card2);color:var(--txt);border-color:var(--accent2)}
 
 .tab-panel{display:none;padding:12px 12px 0}
@@ -137,16 +137,24 @@ button.geo:active{transform:scale(.97)}
 .badge.cb{color:#cdeaff}
 .tarif{margin:9px 0 0;font-size:12.5px;color:#d7e2f7;background:var(--bg2);
   border:1px solid var(--line);border-radius:10px;padding:8px 10px;white-space:pre-wrap}
-.card-actions{display:flex;gap:8px;margin-top:11px}
-.card-actions button,.card-actions a{flex:1;text-align:center;text-decoration:none;
-  border-radius:10px;padding:9px 6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--line)}
-.btn-add{background:rgba(34,197,94,.15);color:#b7f7c8;border-color:#1e5a35}
-.btn-added{background:var(--card2);color:var(--muted)}
-.btn-nav{background:rgba(56,189,248,.20);color:#dff1ff;border-color:#2a6f97;font-weight:700}
-.btn-cp{background:rgba(34,197,94,.15);color:#b7f7c8;border-color:#1e5a35;font-weight:700}
-.btn-map{background:var(--card2);color:#cdeaff;flex:0 0 46px}
-.btn-price{background:rgba(245,158,11,.15);color:#ffd98a;border-color:#5a4a1e}
-.btn-del{background:rgba(239,68,68,.13);color:#ffb4b4;border-color:#5a2020;flex:0 0 46px}
+.card-actions{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap}
+.card-actions button,.card-actions a{flex:1;min-width:0;display:inline-flex;align-items:center;
+  justify-content:center;gap:5px;height:40px;padding:0 12px;text-decoration:none;
+  border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;
+  background:var(--card2);border:1px solid var(--line);color:#d6e2f7;
+  transition:filter .12s,transform .06s,background .12s}
+.card-actions button:active,.card-actions a:active{transform:scale(.96)}
+.card-actions button:hover,.card-actions a:hover{filter:brightness(1.12)}
+/* action PRIMAIRE (pleine) : suivre une borne */
+.btn-add{background:var(--accent);border-color:transparent;color:#06210f;font-weight:700}
+.btn-added{background:var(--card2);border-color:var(--line);color:var(--muted)}
+/* actions secondaires : fond neutre, teinte sur le texte uniquement */
+.btn-nav{background:rgba(56,189,248,.16);border-color:#294a63;color:#bfe6ff;font-weight:700}
+.btn-price{color:#ffd98a}
+.btn-cp{color:#a9f0c2}
+.btn-map{flex:0 0 44px;padding:0;font-size:17px;color:#bfe6ff}
+.btn-del{flex:0 0 44px;padding:0;font-size:16px;color:#ff9b9b}
+.btn-del:active{background:rgba(239,68,68,.16);border-color:#5a2020}
 .myprice{margin:9px 0 0;font-size:14px;font-weight:700;color:var(--accent)}
 .myprice .lbl{color:var(--muted);font-weight:600;font-size:12px}
 .myprice .note{display:block;color:var(--muted);font-weight:500;font-size:12px;margin-top:2px}
