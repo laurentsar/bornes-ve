@@ -152,16 +152,18 @@ function groupStations(rows) {
         adresse: r.adresse_station || '',
         commune: r.consolidated_commune || '',
         lat: r.consolidated_latitude, lon: r.consolidated_longitude,
-        puissance: 0, connectors: new Set(), pdcIds: new Set(), pdcRows: 0, ids: new Set(),
+        puissance: 0, connectors: new Set(), pdcKeys: new Set(), ids: new Set(),
         gratuit: false, cb: false,
         tarification: r.tarification || '', horaires: r.horaires || '',
         maj: r.date_maj || r.last_modified || '',
       };
       map.set(key, s);
     }
-    // Nb de pompes = points de charge DISTINCTS (la base contient des doublons de
-    // lignes) : on compte les id_pdc_itinerance uniques, sinon les lignes sans id.
-    if (r.id_pdc_itinerance) s.pdcIds.add(r.id_pdc_itinerance); else s.pdcRows += 1;
+    // Nb de pompes = points de charge DISTINCTS. La base contient des lignes en
+    // double (même id_pdc) et parfois plusieurs lignes par pompe (1 par prise) :
+    // une seule clé par pompe = id_pdc_itinerance, sinon id_pdc_local, sinon la
+    // ligne elle-même (__id) pour ne jamais perdre ni doubler une pompe.
+    s.pdcKeys.add(r.id_pdc_itinerance || r.id_pdc_local || ('row:' + (r.__id != null ? r.__id : Math.random())));
     s.puissance = Math.max(s.puissance, num(r.puissance_nominale));
     connectorsOf(r).forEach(c => s.connectors.add(c));
     const op = r.nom_operateur || r.nom_enseigne || r.nom_amenageur;
@@ -178,7 +180,7 @@ function groupStations(rows) {
     const ops = [...s.operateurs];
     return {
       ...s, connectors: [...s.connectors], ids: [...s.ids],
-      pdc: s.pdcIds.size || s.pdcRows,
+      pdc: s.pdcKeys.size,
       operateurs: ops, operateur: ops[0] || '—', nbOperateurs: ops.length,
     };
   });
@@ -207,6 +209,21 @@ function fetchByCommune(commune) {
 // bornes ont une commune vide dans la base (invisibles à la recherche par commune).
 function fetchByEnseigne(term) {
   return fetchRows('nom_enseigne__contains=' + encodeURIComponent(term.trim()), 3);
+}
+// Recherche dans l'adresse (rattrape les bornes dont la commune consolidée est vide).
+function fetchByAdresse(term) {
+  return fetchRows('adresse_station__contains=' + encodeURIComponent(term.trim()), 3);
+}
+// Géocode un nom de VILLE via l'API Adresse (BAN) gouv : tolérante aux accents et
+// à la casse, sans clé, CORS ouvert. Renvoie {lat, lon, label} ou null.
+async function geocodeCity(term) {
+  const url = 'https://api-adresse.data.gouv.fr/search/?type=municipality&limit=1&q=' + encodeURIComponent(term.trim());
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  const j = await r.json();
+  const f = (j.features || [])[0];
+  if (!f || !f.geometry) return null;
+  return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], label: f.properties && f.properties.label };
 }
 // Fusionne deux listes de lignes en dédupliquant par __id.
 function mergeRows(a, b) {
@@ -334,7 +351,23 @@ function renderMine() {
     return priceSortVal(a) - priceSortVal(b);
   });
   el('mineEmpty').style.display = items.length ? 'none' : 'block';
-  list.innerHTML = items.map(it => card(it.snap, true, it)).join('');
+
+  // Regroupement par VILLE : un en-tête par commune, favoris triés à l'intérieur.
+  const groups = new Map();
+  for (const it of items) {
+    const ville = (it.snap.commune || '').trim() || 'Autres';
+    if (!groups.has(ville)) groups.set(ville, []);
+    groups.get(ville).push(it);
+  }
+  const villes = [...groups.keys()].sort((a, b) => {
+    if (a === 'Autres') return 1; if (b === 'Autres') return -1;
+    return a.localeCompare(b);
+  });
+  list.innerHTML = villes.map(v => {
+    const g = groups.get(v);
+    return `<div class="city-head">🏙️ ${esc(v)} <span class="city-n">${g.length}</span></div>` +
+      g.map(it => card(it.snap, true, it)).join('');
+  }).join('');
   wireCards(list);
 }
 function priceSortVal(it) {
@@ -513,12 +546,27 @@ async function doSearch() {
   el('searchStatus').innerHTML = '<span class="spin">⏳</span> Recherche officielle…';
   el('searchList').innerHTML = '';
   try {
-    // Commune ET enseigne en parallèle (ex : « Lidl », « Tesla » n'ont pas de commune).
-    const [byCom, byEns] = await Promise.all([
-      fetchByCommune(term).catch(() => []),
-      fetchByEnseigne(term).catch(() => []),
-    ]);
-    searchRaw = mergeRows(byCom, byEns);
+    // 1) On tente de géocoder le terme comme une VILLE (accent/casse-proof).
+    const geo = await geocodeCity(term).catch(() => null);
+    let rows;
+    if (geo) {
+      // Ville reconnue → bbox autour du centre (rattrape les communes VIDES et les
+      // accents, ex Souillac/Groléjac) + enseigne (marques présentes dans la ville).
+      const [bboxRows, ensRows] = await Promise.all([
+        fetchByBBox(geo.lat, geo.lon, 8).catch(() => []),
+        fetchByEnseigne(term).catch(() => []),
+      ]);
+      rows = mergeRows(bboxRows, ensRows);
+    } else {
+      // Pas une ville (marque / adresse) → commune + enseigne + adresse.
+      const [c, e, a] = await Promise.all([
+        fetchByCommune(term).catch(() => []),
+        fetchByEnseigne(term).catch(() => []),
+        fetchByAdresse(term).catch(() => []),
+      ]);
+      rows = mergeRows(mergeRows(c, e), a);
+    }
+    searchRaw = rows;
     renderSearch();
     if (!searchRaw.length) el('searchStatus').textContent = 'Aucune borne trouvée pour « ' + term + ' ».';
   } catch (e) {
