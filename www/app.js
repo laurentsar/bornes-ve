@@ -208,7 +208,9 @@ function fetchByBBox(lat, lon, radiusKm) {
     '&consolidated_latitude__less=' + (lat + dLat) +
     '&consolidated_longitude__greater=' + (lon - dLon) +
     '&consolidated_longitude__less=' + (lon + dLon);
-  return fetchRows(q, 5);
+  // Plus le rayon est grand, plus il y a de bornes : on pagine davantage.
+  const pages = Math.min(15, Math.ceil(radiusKm / 5) + 3);
+  return fetchRows(q, pages);
 }
 
 // ---------- rendu : filtres ----------
