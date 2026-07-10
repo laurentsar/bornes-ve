@@ -357,18 +357,25 @@ function card(s, mine, it) {
   const maj = s.maj ? `<div class="maj">🗓️ maj officielle : ${esc(String(s.maj).slice(0, 10))}</div>` : '';
   const mapUrl = (s.lat && s.lon)
     ? `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}` : '';
+  // Itinéraire GPS direct (lance la navigation Google Maps vers la borne).
+  const navUrl = (s.lat && s.lon)
+    ? `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}&travelmode=driving` : '';
+  const navBtn = navUrl
+    ? `<a class="btn-nav" href="${navUrl}" target="_blank" rel="noopener" title="Y aller (itinéraire GPS)">🧭 Y aller</a>` : '';
+  const mapBtn = mapUrl
+    ? `<a class="btn-map" href="${mapUrl}" target="_blank" rel="noopener" title="Voir sur la carte">🗺️</a>` : '';
 
   let actions;
   if (mine) {
     actions = `
       <button class="btn-price" data-price="${esc(s.id)}">💶 Mon prix</button>
-      ${mapUrl ? `<a class="btn-map" href="${mapUrl}" target="_blank" rel="noopener">🗺️ Carte</a>` : ''}
+      ${navBtn}${mapBtn}
       <button class="btn-del" data-del="${esc(s.id)}">🗑️</button>`;
   } else {
     actions = `
       <button class="${added ? 'btn-added' : 'btn-add'}" data-add="${esc(s.id)}" ${added ? 'disabled' : ''}>
         ${added ? '✅ Suivie' : '⭐ Suivre'}</button>
-      ${mapUrl ? `<a class="btn-map" href="${mapUrl}" target="_blank" rel="noopener">🗺️ Carte</a>` : ''}`;
+      ${navBtn}${mapBtn}`;
   }
 
   return `<div class="card" data-card="${esc(s.id)}">
