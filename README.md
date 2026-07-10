@@ -6,6 +6,8 @@ filtrer par **type de prise** et **fournisseur**, et **comparer tes prix**.
 
 ## Fonctions
 - 🔎 **Recherche par commune** dans la base officielle IRVE (tabular-API data.gouv.fr, en direct).
+- 📍 **Autour de moi** : géolocalisation (plugin Capacitor Geolocation / `navigator.geolocation`),
+  bornes dans un rayon réglable (2–20 km), tri et affichage par distance.
 - 🎛️ **Filtres** : types de prise (Type 2 / CCS Combo / CHAdeMO / Type E-F / Autre), **fournisseur** (opérateur), puissance mini.
 - ⭐ **Mes bornes** : tu suis les stations que tu veux, enregistrées **hors ligne** (localStorage).
 - 💶 **Mon prix** par borne (€/kWh, €/session, €/min ou gratuit) + note → tri par prix.

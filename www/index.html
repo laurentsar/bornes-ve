@@ -33,6 +33,7 @@
       <label class="sort">Trier :
         <select id="sortMine">
           <option value="price">Prix (croissant)</option>
+          <option value="distance">Distance</option>
           <option value="power">Puissance (décroissant)</option>
           <option value="name">Nom</option>
         </select>
@@ -47,6 +48,17 @@
     <div class="search-box">
       <input id="communeInput" type="text" inputmode="search" placeholder="Commune (ex : Colomiers)" />
       <button id="searchBtn" class="primary">Chercher</button>
+    </div>
+    <div class="geo-row">
+      <button id="geoBtn" class="geo">📍 Autour de moi</button>
+      <label class="filter-label">Rayon
+        <select id="radiusFilter">
+          <option value="2">2 km</option>
+          <option value="5" selected>5 km</option>
+          <option value="10">10 km</option>
+          <option value="20">20 km</option>
+        </select>
+      </label>
     </div>
 
     <div class="filters">
@@ -120,7 +132,7 @@
 
   <script>
     window.UPDATE_REPO = 'laurentsar/bornes-ve';
-    window.APP_VERSION = '1.0';
+    window.APP_VERSION = '1.1';
   </script>
   <script src="app.js"></script>
   <script src="update-check.js"></script>

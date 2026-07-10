@@ -25,6 +25,8 @@ let myStations = load();          // [{id, snap, price:{type,value,note}}]
 let searchRaw = [];               // dernier résultat brut (points de charge) de la commune
 let activeTypes = new Set();      // filtres type de prise sélectionnés
 let editingId = null;             // borne en cours d'édition de prix
+let userPos = null;               // {lat, lon} position GPS de l'utilisateur
+let geoSort = false;              // trier la recherche par distance (mode "autour de moi")
 
 // ---------- utils ----------
 function load() {
@@ -45,6 +47,25 @@ function esc(s) {
 }
 function el(id) { return document.getElementById(id); }
 function num(v) { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) ? n : 0; }
+
+// Distance haversine en km entre deux points GPS.
+function distKm(aLat, aLon, bLat, bLon) {
+  if (![aLat, aLon, bLat, bLon].every(isFinite)) return null;
+  const R = 6371, r = Math.PI / 180;
+  const dLat = (bLat - aLat) * r, dLon = (bLon - aLon) * r;
+  const s = Math.sin(dLat / 2) ** 2 +
+    Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+// Distance depuis l'utilisateur jusqu'à une station (ou null).
+function stationDist(s) {
+  if (!userPos || !s) return null;
+  return distKm(userPos.lat, userPos.lon, num(s.lat), num(s.lon));
+}
+function fmtDist(km) {
+  if (km == null) return '';
+  return km < 1 ? Math.round(km * 1000) + ' m' : km.toFixed(km < 10 ? 1 : 0) + ' km';
+}
 
 // Connecteurs présents sur un point de charge -> liste de labels.
 function connectorsOf(row) {
@@ -106,6 +127,17 @@ function fetchByCommune(commune) {
 function fetchByStationId(id) {
   return fetchRows('id_station_itinerance__exact=' + encodeURIComponent(id), 1);
 }
+// Bornes dans un carré de rayon ~radiusKm autour de (lat, lon).
+function fetchByBBox(lat, lon, radiusKm) {
+  const dLat = radiusKm / 111;
+  const dLon = radiusKm / (111 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+  const q =
+    'consolidated_latitude__greater=' + (lat - dLat) +
+    '&consolidated_latitude__less=' + (lat + dLat) +
+    '&consolidated_longitude__greater=' + (lon - dLon) +
+    '&consolidated_longitude__less=' + (lon + dLon);
+  return fetchRows(q, 5);
+}
 
 // ---------- rendu : filtres ----------
 function renderTypeChips() {
@@ -137,15 +169,21 @@ function renderSearch() {
   const op = el('operatorFilter').value;
   const minPow = num(el('powerFilter').value);
 
+  const radius = num(el('radiusFilter').value) || 5;
   const filtered = stations.filter(s => {
     if (op && s.operateur !== op) return false;
     if (minPow && s.puissance < minPow) return false;
     if (activeTypes.size && !s.connectors.some(c => activeTypes.has(c))) return false;
+    if (geoSort && userPos) { const d = stationDist(s); if (d != null && d > radius) return false; }
     return true;
   });
 
+  if (geoSort && userPos) {
+    filtered.sort((a, b) => (stationDist(a) ?? 1e9) - (stationDist(b) ?? 1e9));
+  }
+
   el('searchStatus').textContent = searchRaw.length
-    ? `${filtered.length} station(s) · ${searchRaw.length} points de charge trouvés`
+    ? (geoSort ? '📍 ' : '') + `${filtered.length} station(s) · ${searchRaw.length} points de charge trouvés`
     : '';
   el('searchList').innerHTML = filtered.map(s => card(s, false)).join('') ||
     (searchRaw.length ? '<p class="empty">Aucune borne ne correspond aux filtres.</p>' : '');
@@ -160,6 +198,7 @@ function renderMine() {
   items.sort((a, b) => {
     if (sort === 'power') return (b.snap.puissance || 0) - (a.snap.puissance || 0);
     if (sort === 'name') return (a.snap.nom || '').localeCompare(b.snap.nom || '');
+    if (sort === 'distance') return (stationDist(a.snap) ?? 1e9) - (stationDist(b.snap) ?? 1e9);
     // price : gratuit puis prix croissant, "non renseigné" en dernier
     return priceSortVal(a) - priceSortVal(b);
   });
@@ -187,6 +226,8 @@ function myPriceLine(it) {
 function card(s, mine, it) {
   const added = myStations.some(m => m.id === s.id);
   const badges = [];
+  const d = stationDist(s);
+  if (d != null) badges.push(`<span class="badge dist">📍 ${fmtDist(d)}</span>`);
   if (s.puissance) badges.push(`<span class="badge pow">${s.puissance} kW</span>`);
   if (s.pdc) badges.push(`<span class="badge">${s.pdc} pdc</span>`);
   s.connectors.forEach(c => badges.push(`<span class="badge">${esc(c)}</span>`));
@@ -306,6 +347,7 @@ async function refreshAll() {
 async function doSearch() {
   const commune = el('communeInput').value.trim();
   if (!commune) { el('searchStatus').textContent = 'Entre une commune.'; return; }
+  geoSort = false;                       // recherche par commune : pas de tri distance
   el('searchStatus').innerHTML = '<span class="spin">⏳</span> Recherche officielle…';
   el('searchList').innerHTML = '';
   try {
@@ -315,6 +357,49 @@ async function doSearch() {
   } catch (e) {
     el('searchStatus').textContent = '⚠️ Erreur réseau (' + e.message + '). Réessaie.';
   }
+}
+
+// ---------- géolocalisation ----------
+async function loadAround() {
+  const radius = num(el('radiusFilter').value) || 5;
+  el('searchStatus').innerHTML = '<span class="spin">⏳</span> Bornes autour de moi (' + radius + ' km)…';
+  el('searchList').innerHTML = '';
+  try {
+    searchRaw = await fetchByBBox(userPos.lat, userPos.lon, radius);
+    geoSort = true;
+    renderSearch();
+    renderMine();                        // affiche aussi la distance sur "Mes bornes"
+    if (!el('searchList').children.length) el('searchStatus').textContent = 'Aucune borne dans ce rayon.';
+  } catch (e) {
+    el('searchStatus').textContent = '⚠️ Erreur réseau (' + e.message + ').';
+  }
+}
+// Plugin Capacitor Geolocation si dispo (gère la permission runtime Android),
+// sinon navigator.geolocation (PWA / navigateur).
+function capGeo() {
+  return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation) || null;
+}
+async function geolocate() {
+  el('communeInput').value = '';
+  el('searchStatus').innerHTML = '<span class="spin">📍</span> Localisation en cours…';
+  const G = capGeo();
+  if (G) {
+    try {
+      const perm = await G.requestPermissions();
+      const st = perm && (perm.location || perm.coarseLocation);
+      if (st === 'denied') { el('searchStatus').textContent = '⚠️ Localisation refusée dans les réglages.'; return; }
+      const pos = await G.getCurrentPosition({ enableHighAccuracy: true, timeout: 12000 });
+      userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      loadAround();
+    } catch (e) { el('searchStatus').textContent = '⚠️ Localisation indisponible (' + (e.message || e) + ').'; }
+    return;
+  }
+  if (!navigator.geolocation) { el('searchStatus').textContent = 'Géolocalisation indisponible sur cet appareil.'; return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => { userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude }; loadAround(); },
+    err => { el('searchStatus').textContent = '⚠️ Localisation refusée / indisponible (' + err.message + ').'; },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+  );
 }
 
 // ---------- tabs ----------
@@ -336,8 +421,10 @@ function init() {
   renderMine();
   el('searchBtn').onclick = doSearch;
   el('communeInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  el('geoBtn').onclick = geolocate;
   el('operatorFilter').onchange = renderSearch;
   el('powerFilter').onchange = renderSearch;
+  el('radiusFilter').onchange = () => { if (geoSort && userPos) loadAround(); else renderSearch(); };
   el('sortMine').onchange = renderMine;
   el('refreshAll').onclick = refreshAll;
   el('pmCancel').onclick = closePrice;
