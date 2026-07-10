@@ -234,32 +234,54 @@ function renderTypeChips() {
 // variantes (« Lidl France » vs « LIDL France »).
 function opNorm(o) { return String(o || '').trim().toLowerCase(); }
 
-// Chips fournisseurs (multi-sélection), dédupliqués insensiblement à la casse.
-// activeOps contient des clés normalisées ; les chips affichent le 1er libellé vu.
-function fillOperatorChips(stations) {
+// Menu déroulant MULTICHOIX des fournisseurs (cases à cocher), dédupliqué
+// insensiblement à la casse. activeOps = clés normalisées ; libellé = 1er vu.
+function opDisplayMap(stations) {
   const disp = new Map();  // norm -> libellé affiché
   stations.forEach(s => (s.operateurs && s.operateurs.length ? s.operateurs : [s.operateur])
     .forEach(o => { if (o) { const n = opNorm(o); if (!disp.has(n)) disp.set(n, o); } }));
-  // purge les sélections disparues
-  [...activeOps].forEach(n => { if (!disp.has(n)) activeOps.delete(n); });
+  return disp;
+}
+function updateOpBtn(disp) {
+  const btn = el('opDropBtn');
+  let label;
+  if (activeOps.size === 0) label = 'Tous les fournisseurs';
+  else if (activeOps.size === 1) label = disp.get([...activeOps][0]) || '1 fournisseur';
+  else label = activeOps.size + ' fournisseurs';
+  btn.innerHTML = esc(label) + ' <span class="ms-caret">▾</span>';
+  btn.classList.toggle('has', activeOps.size > 0);
+}
+function renderOpMenu(stations) {
+  const disp = opDisplayMap(stations);
+  [...activeOps].forEach(n => { if (!disp.has(n)) activeOps.delete(n); });  // purge disparus
   const entries = [...disp.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  el('operatorChips').innerHTML = entries.map(([n, d]) =>
-    `<span class="chip${activeOps.has(n) ? ' on' : ''}" data-op="${esc(n)}">${esc(d)}</span>`
-  ).join('') || '<span class="muted" style="font-size:12px">—</span>';
-  el('opCount').textContent = activeOps.size ? '(' + activeOps.size + ' sélectionné' + (activeOps.size > 1 ? 's' : '') + ')' : '';
-  el('operatorChips').querySelectorAll('.chip').forEach(ch => {
-    ch.onclick = () => {
-      const n = ch.dataset.op;
-      activeOps.has(n) ? activeOps.delete(n) : activeOps.add(n);
+  el('opList').innerHTML = entries.length ? entries.map(([n, d]) =>
+    `<label class="ms-opt" data-op="${esc(n)}" data-name="${esc(d.toLowerCase())}">
+      <input type="checkbox" ${activeOps.has(n) ? 'checked' : ''}><span>${esc(d)}</span></label>`
+  ).join('') : '<div class="ms-empty">Aucun fournisseur (lance une recherche).</div>';
+  el('opList').querySelectorAll('.ms-opt input').forEach(cb => {
+    cb.onchange = () => {
+      const n = cb.closest('.ms-opt').dataset.op;
+      cb.checked ? activeOps.add(n) : activeOps.delete(n);
+      updateOpBtn(disp);
       renderSearch();
     };
+  });
+  filterOpList();
+  updateOpBtn(disp);
+}
+// Filtre visuel de la liste selon le champ de recherche du menu.
+function filterOpList() {
+  const q = (el('opSearch').value || '').trim().toLowerCase();
+  el('opList').querySelectorAll('.ms-opt').forEach(o => {
+    o.classList.toggle('hide', q && !o.dataset.name.includes(q));
   });
 }
 
 // ---------- rendu : recherche ----------
 function renderSearch() {
   const stations = groupStations(searchRaw);
-  fillOperatorChips(stations);
+  renderOpMenu(stations);
   const minPow = num(el('powerFilter').value);
 
   const radius = num(el('radiusFilter').value) || 5;
@@ -497,6 +519,35 @@ async function loadAround() {
 function capGeo() {
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation) || null;
 }
+// Acquisition SILENCIEUSE de la position (au démarrage) pour afficher le
+// kilométrage sur toutes les cartes, sans lancer une recherche « autour de moi ».
+async function ensurePosition() {
+  if (userPos) return;
+  const G = capGeo();
+  try {
+    if (G) {
+      let st = 'granted';
+      if (G.checkPermissions) {
+        const p = await G.checkPermissions();
+        st = p && (p.location || p.coarseLocation);
+        if (st === 'prompt' || st === 'prompt-with-rationale') {
+          const rp = await G.requestPermissions();
+          st = rp && (rp.location || rp.coarseLocation);
+        }
+      }
+      if (st === 'denied') return;
+      const pos = await G.getCurrentPosition({ enableHighAccuracy: false, timeout: 10000 });
+      userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    } else if (navigator.geolocation) {
+      await new Promise(res => navigator.geolocation.getCurrentPosition(
+        p => { userPos = { lat: p.coords.latitude, lon: p.coords.longitude }; res(); },
+        () => res(),
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }));
+    }
+  } catch (e) { /* silencieux */ }
+  if (userPos) { renderMine(); if (searchRaw.length) renderSearch(); }
+}
+
 async function geolocate() {
   el('communeInput').value = '';
   el('searchStatus').innerHTML = '<span class="spin">📍</span> Localisation en cours…';
@@ -637,8 +688,17 @@ function init() {
   el('pmSave').onclick = savePrice;
   el('priceModal').addEventListener('click', e => { if (e.target === el('priceModal')) closePrice(); });
 
+  // menu déroulant multichoix fournisseurs
+  el('opDropBtn').onclick = () => { el('opDropPanel').hidden = !el('opDropPanel').hidden; };
+  el('opSearch').oninput = filterOpList;
+  el('opClear').onclick = () => { activeOps.clear(); renderSearch(); };
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.ms')) el('opDropPanel').hidden = true;
+  });
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+  ensurePosition();   // kilométrage sur toutes les cartes dès le départ
 }
 document.addEventListener('DOMContentLoaded', init);

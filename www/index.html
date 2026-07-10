@@ -71,8 +71,17 @@
         <div id="typeChips" class="chips"></div>
       </div>
       <div class="filter-group">
-        <span class="filter-label">Fournisseurs <span id="opCount" class="muted"></span></span>
-        <div id="operatorChips" class="chips ops"></div>
+        <span class="filter-label">Fournisseurs</span>
+        <div class="ms">
+          <button id="opDropBtn" class="ms-btn" type="button">Tous les fournisseurs <span class="ms-caret">▾</span></button>
+          <div id="opDropPanel" class="ms-panel" hidden>
+            <div class="ms-tools">
+              <input id="opSearch" type="text" placeholder="Filtrer un fournisseur…" />
+              <button id="opClear" type="button" class="ms-clear">Aucun</button>
+            </div>
+            <div id="opList" class="ms-list"></div>
+          </div>
+        </div>
       </div>
       <div class="filter-row">
         <label class="filter-label">Puiss. min
@@ -150,7 +159,7 @@
 
   <script>
     window.UPDATE_REPO = 'laurentsar/bornes-ve';
-    window.APP_VERSION = '1.7';
+    window.APP_VERSION = '1.8';
   </script>
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js"></script>
