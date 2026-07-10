@@ -799,6 +799,8 @@ function cpBase() { try { return (localStorage.getItem('cpBase') || CP_BASE_DEFA
 // sinon 404) : gère base nue, base finissant par /v1, ou déjà /charge_prices.
 function cpUrl() {
   let b = cpBase().replace(/\/+$/, '');
+  // insights.chargeprice.app = tableau de bord web (pas l'API) → host API réel.
+  b = b.replace(/insights\.chargeprice\.app/i, 'api.chargeprice.app');
   if (/\/charge_prices$/i.test(b)) return b;
   if (/\/v\d+$/i.test(b)) return b + '/charge_prices';
   return b + '/v1/charge_prices';
