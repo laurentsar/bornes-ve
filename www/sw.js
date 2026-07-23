@@ -1,6 +1,6 @@
 /* Bornes VE — service worker. Cache l'app shell (offline). Les appels API
    (tabular-api.data.gouv.fr) ne sont PAS mis en cache : toujours du réseau. */
-const CACHE = 'bornes-ve-v1.24';
+const CACHE = 'bornes-ve-v1.25';
 const SHELL = [
   'index.html', 'styles.css', 'app.js', 'update-check.js',
   'autobackup.js',
