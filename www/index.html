@@ -32,6 +32,14 @@
   <!-- ============================ MES BORNES ============================ -->
   <section id="tab-mine" class="tab-panel active">
     <div class="toolbar">
+      <label class="sort">Autoroute :
+        <select id="tollFilter">
+          <option value="">Toutes</option>
+          <option value="toll">Avec péage</option>
+          <option value="free">Sans péage</option>
+          <option value="none">Hors autoroute</option>
+        </select>
+      </label>
       <label class="sort">Trier :
         <select id="sortMine">
           <option value="price">Prix (croissant)</option>
@@ -170,6 +178,14 @@
       <label>Note (facultatif)
         <input id="pmNote" type="text" placeholder="badge, abonnement, remarque…" />
       </label>
+      <label>Autoroute
+        <select id="pmToll">
+          <option value="">Non renseigné</option>
+          <option value="toll">Sur autoroute (avec péage)</option>
+          <option value="free">Sur autoroute (sans péage)</option>
+          <option value="none">Pas sur autoroute</option>
+        </select>
+      </label>
       <div class="modal-actions">
         <button id="pmCancel" class="ghost">Annuler</button>
         <button id="pmSave" class="primary">Enregistrer</button>
@@ -191,7 +207,7 @@
 
   <script>
     window.UPDATE_REPO = 'laurentsar/bornes-ve';
-    window.APP_VERSION = '1.25';
+    window.APP_VERSION = '1.26';
   </script>
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js"></script>

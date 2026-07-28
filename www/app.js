@@ -345,7 +345,8 @@ function renderResults() {
 function renderMine() {
   const list = el('mineList');
   const sort = el('sortMine').value;
-  const items = myStations.slice();
+  const tollF = el('tollFilter').value;
+  const items = myStations.filter(it => !tollF || (it.toll || '') === tollF);
   items.sort((a, b) => {
     if (sort === 'power') return (b.snap.puissance || 0) - (a.snap.puissance || 0);
     if (sort === 'name') return (a.snap.nom || '').localeCompare(b.snap.nom || '');
@@ -427,6 +428,14 @@ function myPriceLine(it) {
   const note = p.note ? `<span class="note">${esc(p.note)}</span>` : '';
   return `<div class="myprice"><span class="lbl">Mon prix : </span>${esc(val)}${note}</div>`;
 }
+// Situation autoroute (péage) : absente de la base officielle IRVE -> saisie
+// manuelle par l'utilisateur (comme "Mon prix"), uniquement sur les favoris.
+const TOLL_LABELS = {
+  toll: '🛣️ Autoroute (péage)',
+  free: '🛣️ Autoroute (sans péage)',
+  none: '🛣️ Hors autoroute',
+};
+
 function card(s, mine, it) {
   const added = myStations.some(m => m.id === s.id);
   const d = stationDist(s);
@@ -435,11 +444,12 @@ function card(s, mine, it) {
   if (d != null) summ.push('📍 ' + fmtDist(d));
   if (s.puissance) summ.push('⚡ ' + s.puissance + ' kW');
   if (s.pdc) summ.push(s.pdc + ' pompe' + (s.pdc > 1 ? 's' : ''));
-  // Badges détaillés (dans le corps dépliable) : prises + gratuit + CB.
+  // Badges détaillés (dans le corps dépliable) : prises + gratuit + CB + péage.
   const badges = [];
   s.connectors.forEach(c => badges.push(`<span class="badge">${esc(c)}</span>`));
   if (s.gratuit) badges.push('<span class="badge free">Gratuit</span>');
   if (s.cb) badges.push('<span class="badge cb">CB</span>');
+  if (mine && it && it.toll && TOLL_LABELS[it.toll]) badges.push(`<span class="badge toll">${esc(TOLL_LABELS[it.toll])}</span>`);
 
   const tarif = s.tarification
     ? `<div class="tarif">💶 Tarif déclaré : ${esc(s.tarification)}</div>` : '';
@@ -453,6 +463,17 @@ function card(s, mine, it) {
     ? `<a class="btn-nav" href="${navUrl}" target="_blank" rel="noopener" title="Y aller (itinéraire GPS)">🧭 Y aller</a>` : '';
   const mapBtn = mapUrl
     ? `<a class="btn-map" href="${mapUrl}" target="_blank" rel="noopener" title="Voir sur la carte">🗺️</a>` : '';
+  // Liens directs vers d'autres annuaires de bornes (recoupement d'infos / avis).
+  const cmUrl = (s.lat && s.lon)
+    ? `https://chargemap.com/en-gb/map?lat=${s.lat}&lng=${s.lon}&zoom=17` : '';
+  const cfQuery = ((s.nom || '') + ' ' + (s.adresse || '')).trim();
+  const cfUrl = cfQuery
+    ? `https://chargefinder.com/search?v2=true&lang=fr&q=${encodeURIComponent(cfQuery)}` : '';
+  const extLinks = (cmUrl || cfUrl)
+    ? `<div class="ext-links">
+        ${cmUrl ? `<a class="ext-link" href="${cmUrl}" target="_blank" rel="noopener">🔗 Chargemap</a>` : ''}
+        ${cfUrl ? `<a class="ext-link" href="${cfUrl}" target="_blank" rel="noopener">🔗 ChargeFinder</a>` : ''}
+      </div>` : '';
   // Id d'ACTION : pour un favori on utilise l'id du favori (it.id) — le snap.id peut
   // avoir changé après une actualisation, ce qui cassait suppression / prix.
   const aid = (mine && it) ? it.id : s.id;
@@ -492,6 +513,7 @@ function card(s, mine, it) {
       ${tarif}
       ${s.horaires ? `<div class="maj">🕑 ${esc(s.horaires)}</div>` : ''}
       ${maj}
+      ${extLinks}
       <div class="card-actions">${actions}</div>
     </div>
   </div>`;
@@ -527,7 +549,7 @@ function wireCards(root) {
 function addStation(id) {
   const s = groupStations(searchRaw).find(x => x.id === id);
   if (!s || myStations.some(m => m.id === id)) return;
-  myStations.push({ id, snap: snapOf(s), price: { type: null, value: 0, note: '' } });
+  myStations.push({ id, snap: snapOf(s), price: { type: null, value: 0, note: '' }, toll: '' });
   save();
   renderSearch();
   renderMine();
@@ -548,6 +570,7 @@ function openPrice(id) {
   el('pmType').value = it.price.type || 'kwh';
   el('pmValue').value = it.price.value || '';
   el('pmNote').value = it.price.note || '';
+  el('pmToll').value = it.toll || '';
   el('priceModal').hidden = false;
 }
 function closePrice() { el('priceModal').hidden = true; editingId = null; }
@@ -556,6 +579,7 @@ function savePrice() {
   if (it) {
     const type = el('pmType').value;
     it.price = { type, value: type === 'free' ? 0 : num(el('pmValue').value), note: el('pmNote').value.trim() };
+    it.toll = el('pmToll').value;
     save();
     renderMine();
   }
@@ -957,6 +981,7 @@ function init() {
   el('powerFilter').onchange = renderResults;
   el('radiusFilter').onchange = () => { if (geoSort && userPos) loadAround(); else renderResults(); };
   el('sortMine').onchange = renderMine;
+  el('tollFilter').onchange = renderMine;
   el('refreshAll').onclick = refreshAll;
   el('recenterBtn').onclick = recenterMap;
   el('appVersion').textContent = 'v' + (window.APP_VERSION || '?');
