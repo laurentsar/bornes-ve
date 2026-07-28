@@ -436,6 +436,14 @@ const TOLL_LABELS = {
   none: '🛣️ Hors autoroute',
 };
 
+// Réseaux au tarif FIXE et identique partout (contrairement à la plupart des
+// opérateurs) : la base IRVE ne déclare généralement pas de "tarification" pour
+// ces bornes, alors qu'un prix de référence public et stable existe.
+const STANDARD_TARIFS = [
+  { re: /lidl/i, label: '0,29 €/kWh (AC) · 0,39 €/kWh (DC)', url: 'https://www.lidl.fr/c/tarifs-bornes/s10027299' },
+  { re: /izivia/i, label: '0,35 €/kWh', url: 'https://izivia.com/questions-frequentes/carte-de-recharge-izivia/prix-recharge-bornes-electriques' },
+];
+
 function card(s, mine, it) {
   const added = myStations.some(m => m.id === s.id);
   const d = stationDist(s);
@@ -453,6 +461,12 @@ function card(s, mine, it) {
 
   const tarif = s.tarification
     ? `<div class="tarif">💶 Tarif déclaré : ${esc(s.tarification)}</div>` : '';
+  // Tarif standard réseau (Lidl, Izivia…) : affiché seulement si la base IRVE ne
+  // déclare rien pour cette borne, pour ne jamais contredire une donnée officielle.
+  const ops = s.operateurs && s.operateurs.length ? s.operateurs : [s.operateur];
+  const stdTarif = !s.tarification ? STANDARD_TARIFS.find(t => ops.some(o => t.re.test(o || ''))) : null;
+  const stdTarifHtml = stdTarif
+    ? `<div class="tarif">💶 Tarif standard réseau : ${esc(stdTarif.label)} · <a href="${stdTarif.url}" target="_blank" rel="noopener">vérifier</a></div>` : '';
   const maj = s.maj ? `<div class="maj">🗓️ maj officielle : ${esc(String(s.maj).slice(0, 10))}</div>` : '';
   const mapUrl = (s.lat && s.lon)
     ? `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}` : '';
@@ -469,10 +483,20 @@ function card(s, mine, it) {
   const cfQuery = ((s.nom || '') + ' ' + (s.adresse || '')).trim();
   const cfUrl = cfQuery
     ? `https://chargefinder.com/search?v2=true&lang=fr&q=${encodeURIComponent(cfQuery)}` : '';
-  const extLinks = (cmUrl || cfUrl)
+  // Superchargeur Tesla : lien direct vers la fiche officielle Tesla (tarifs par
+  // borne, y compris pour les véhicules non-Tesla), centré sur la station via une
+  // petite bbox autour de ses coordonnées (pas de prix officiel dans la base IRVE).
+  const isTesla = (s.operateurs && s.operateurs.length ? s.operateurs : [s.operateur]).some(o => /tesla/i.test(o || ''));
+  const teslaUrl = (isTesla && s.lat && s.lon) ? (() => {
+    const lat = num(s.lat), lon = num(s.lon), dd = 0.03;
+    const bounds = [lat + dd, lon + dd, lat - dd, lon - dd].join(',');
+    return `https://www.tesla.com/fr_fr/findus?bounds=${bounds}&location=${encodeURIComponent(s.nom || s.commune || '')}`;
+  })() : '';
+  const extLinks = (cmUrl || cfUrl || teslaUrl)
     ? `<div class="ext-links">
         ${cmUrl ? `<a class="ext-link" href="${cmUrl}" target="_blank" rel="noopener">🔗 Chargemap</a>` : ''}
         ${cfUrl ? `<a class="ext-link" href="${cfUrl}" target="_blank" rel="noopener">🔗 ChargeFinder</a>` : ''}
+        ${teslaUrl ? `<a class="ext-link" href="${teslaUrl}" target="_blank" rel="noopener">🔗 Tesla (prix)</a>` : ''}
       </div>` : '';
   // Id d'ACTION : pour un favori on utilise l'id du favori (it.id) — le snap.id peut
   // avoir changé après une actualisation, ce qui cassait suppression / prix.
@@ -511,6 +535,7 @@ function card(s, mine, it) {
       ${badges.length ? `<div class="badges">${badges.join('')}</div>` : ''}
       ${mine ? myPriceLine(it) : ''}
       ${tarif}
+      ${stdTarifHtml}
       ${s.horaires ? `<div class="maj">🕑 ${esc(s.horaires)}</div>` : ''}
       ${maj}
       ${extLinks}
