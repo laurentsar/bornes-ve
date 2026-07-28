@@ -469,10 +469,20 @@ function card(s, mine, it) {
   const cfQuery = ((s.nom || '') + ' ' + (s.adresse || '')).trim();
   const cfUrl = cfQuery
     ? `https://chargefinder.com/search?v2=true&lang=fr&q=${encodeURIComponent(cfQuery)}` : '';
-  const extLinks = (cmUrl || cfUrl)
+  // Superchargeur Tesla : lien direct vers la fiche officielle Tesla (tarifs par
+  // borne, y compris pour les véhicules non-Tesla), centré sur la station via une
+  // petite bbox autour de ses coordonnées (pas de prix officiel dans la base IRVE).
+  const isTesla = (s.operateurs && s.operateurs.length ? s.operateurs : [s.operateur]).some(o => /tesla/i.test(o || ''));
+  const teslaUrl = (isTesla && s.lat && s.lon) ? (() => {
+    const lat = num(s.lat), lon = num(s.lon), dd = 0.03;
+    const bounds = [lat + dd, lon + dd, lat - dd, lon - dd].join(',');
+    return `https://www.tesla.com/fr_fr/findus?bounds=${bounds}&location=${encodeURIComponent(s.nom || s.commune || '')}`;
+  })() : '';
+  const extLinks = (cmUrl || cfUrl || teslaUrl)
     ? `<div class="ext-links">
         ${cmUrl ? `<a class="ext-link" href="${cmUrl}" target="_blank" rel="noopener">🔗 Chargemap</a>` : ''}
         ${cfUrl ? `<a class="ext-link" href="${cfUrl}" target="_blank" rel="noopener">🔗 ChargeFinder</a>` : ''}
+        ${teslaUrl ? `<a class="ext-link" href="${teslaUrl}" target="_blank" rel="noopener">🔗 Tesla (prix)</a>` : ''}
       </div>` : '';
   // Id d'ACTION : pour un favori on utilise l'id du favori (it.id) — le snap.id peut
   // avoir changé après une actualisation, ce qui cassait suppression / prix.
