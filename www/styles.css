@@ -91,8 +91,10 @@ button.geo.active{background:rgba(56,189,248,.16);border-color:var(--accent2);co
 .ms-opt.hide{display:none}
 .ms-empty{color:var(--muted);font-size:12.5px;padding:8px 6px}
 .chip{background:var(--card);border:1px solid var(--line);color:var(--muted);
-  padding:7px 12px;border-radius:999px;font-size:13px;cursor:pointer;user-select:none}
+  padding:7px 12px;border-radius:999px;font-size:13px;cursor:pointer;user-select:none;
+  margin-top:9px;display:inline-block}
 .chip.on{background:rgba(56,189,248,.16);border-color:var(--accent2);color:#cdeaff}
+#toggleOthersHint{margin:4px 2px 0}
 
 .status{color:var(--muted);font-size:13px;min-height:18px;margin:2px 2px 8px}
 
