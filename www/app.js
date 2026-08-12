@@ -35,9 +35,14 @@ let showOthers = false;           // false = uniquement les réseaux prioritaire
 // Réseaux affichés par défaut dans la recherche (les plus utilisés) ; les autres
 // n'apparaissent que si l'utilisateur active "Afficher aussi les autres réseaux".
 const PRIORITY_OPS = [/tesla/i, /lidl/i, /izivia/i];
+const PRIORITY_ENSEIGNES = ['Tesla', 'Lidl', 'Izivia'];  // pour les requêtes API (nom_enseigne)
 function isPriorityOp(s) {
+  // Beaucoup de bornes "enseigne" (ex : Lidl) sont exploitées par un tiers
+  // (Allego, Atlante…) : le champ opérateur ne contient alors PAS la marque,
+  // seul le nom de la station/enseigne le mentionne -> on teste les deux.
   const ops = (s.operateurs && s.operateurs.length) ? s.operateurs : [s.operateur];
-  return ops.some(o => PRIORITY_OPS.some(re => re.test(o || '')));
+  const haystacks = ops.concat([s.nom]);
+  return haystacks.some(o => PRIORITY_OPS.some(re => re.test(o || '')));
 }
 
 // ---------- utils ----------
@@ -271,6 +276,25 @@ function fetchByBBox(lat, lon, radiusKm) {
   // Plus le rayon est grand, plus il y a de bornes : on pagine davantage.
   const pages = Math.min(15, Math.ceil(radiusKm / 5) + 3);
   return fetchRows(q, pages);
+}
+// Bornes d'une ENSEIGNE donnée dans un carré autour de (lat, lon). Utilisé pour
+// les réseaux prioritaires (Tesla/Lidl/Izivia) : fetchByBBox() plafonne à ~500
+// lignes par zone, un grand quartier dense (Electra, Bump, Allego…) peut donc
+// noyer/exclure ces réseaux avant même qu'on les filtre côté client.
+function fetchByBBoxEnseigne(lat, lon, radiusKm, term) {
+  const dLat = radiusKm / 111;
+  const dLon = radiusKm / (111 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+  const q =
+    'nom_enseigne__contains=' + encodeURIComponent(term) +
+    '&consolidated_latitude__greater=' + (lat - dLat) +
+    '&consolidated_latitude__less=' + (lat + dLat) +
+    '&consolidated_longitude__greater=' + (lon - dLon) +
+    '&consolidated_longitude__less=' + (lon + dLon);
+  return fetchRows(q, 3);
+}
+function fetchPriorityInBBox(lat, lon, radiusKm) {
+  return Promise.all(PRIORITY_ENSEIGNES.map(term => fetchByBBoxEnseigne(lat, lon, radiusKm, term).catch(() => [])))
+    .then(lists => lists.reduce((acc, l) => mergeRows(acc, l), []));
 }
 
 // ---------- rendu : filtres ----------
@@ -682,12 +706,15 @@ async function doSearch() {
     let rows;
     if (geo) {
       // Ville reconnue → bbox autour du centre (rattrape les communes VIDES et les
-      // accents, ex Souillac/Groléjac) + enseigne (marques présentes dans la ville).
-      const [bboxRows, ensRows] = await Promise.all([
+      // accents, ex Souillac/Groléjac) + enseigne (marques présentes dans la ville)
+      // + réseaux prioritaires (Tesla/Lidl/Izivia) en requête dédiée : la bbox seule
+      // plafonne à ~500 lignes et peut les exclure dans une zone dense.
+      const [bboxRows, ensRows, prioRows] = await Promise.all([
         fetchByBBox(geo.lat, geo.lon, 8).catch(() => []),
         fetchByEnseigne(term).catch(() => []),
+        fetchPriorityInBBox(geo.lat, geo.lon, 8).catch(() => []),
       ]);
-      rows = mergeRows(bboxRows, ensRows);
+      rows = mergeRows(mergeRows(bboxRows, ensRows), prioRows);
     } else {
       // Pas une ville (marque / adresse) → commune + enseigne + adresse.
       const [c, e, a] = await Promise.all([
@@ -711,7 +738,13 @@ async function loadAround() {
   el('searchStatus').innerHTML = '<span class="spin">⏳</span> Bornes autour de moi (' + radius + ' km)…';
   el('searchList').innerHTML = '';
   try {
-    searchRaw = await fetchByBBox(userPos.lat, userPos.lon, radius);
+    // bbox seule plafonne à ~500 lignes : requête dédiée pour les réseaux
+    // prioritaires (Tesla/Lidl/Izivia) afin qu'ils ne soient jamais exclus.
+    const [bboxRows, prioRows] = await Promise.all([
+      fetchByBBox(userPos.lat, userPos.lon, radius),
+      fetchPriorityInBBox(userPos.lat, userPos.lon, radius).catch(() => []),
+    ]);
+    searchRaw = mergeRows(bboxRows, prioRows);
     geoSort = true;
     el('geoBtn').classList.add('active');   // mode "autour de moi" actif
     renderSearch();
