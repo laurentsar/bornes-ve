@@ -30,6 +30,15 @@ let geoSort = false;              // trier la recherche par distance (mode "auto
 let expandedCities = new Set();   // villes dépliées dans "Mes bornes" (fermées par défaut)
 let expandedCards = new Set();     // tuiles de bornes dépliées (fermées par défaut)
 let _revGeoDone = new Set();      // favoris déjà reverse-géocodés (ville manquante)
+let showOthers = false;           // false = uniquement les réseaux prioritaires (PRIORITY_OPS)
+
+// Réseaux affichés par défaut dans la recherche (les plus utilisés) ; les autres
+// n'apparaissent que si l'utilisateur active "Afficher aussi les autres réseaux".
+const PRIORITY_OPS = [/tesla/i, /lidl/i, /izivia/i];
+function isPriorityOp(s) {
+  const ops = (s.operateurs && s.operateurs.length) ? s.operateurs : [s.operateur];
+  return ops.some(o => PRIORITY_OPS.some(re => re.test(o || '')));
+}
 
 // ---------- utils ----------
 function load() {
@@ -307,6 +316,12 @@ function renderOpMenu(stations) {
   filterOpList();
   updateOpBtn();
 }
+function updateToggleOthersBtn() {
+  const btn = el('toggleOthers');
+  btn.textContent = showOthers ? '✅ Tous les réseaux affichés' : '➕ Afficher aussi les autres réseaux';
+  btn.classList.toggle('on', showOthers);
+  el('toggleOthersHint').style.display = showOthers ? 'none' : 'block';
+}
 // Filtre visuel de la liste selon le champ de recherche du menu.
 function filterOpList() {
   const q = (el('opSearch').value || '').trim().toLowerCase();
@@ -329,6 +344,7 @@ function renderResults() {
   const minPow = num(el('powerFilter').value);
   const radius = num(el('radiusFilter').value) || 5;
   const filtered = currentStations.filter(s => {
+    if (!showOthers && !isPriorityOp(s)) return false;
     if (activeOps.size) {
       const ops = ((s.operateurs && s.operateurs.length) ? s.operateurs : [s.operateur]).map(opNorm);
       if (!ops.some(o => activeOps.has(o))) return false;
@@ -1040,6 +1056,14 @@ function init() {
   };
   el('cpClose').onclick = () => { el('cpModal').hidden = true; };
   el('cpModal').addEventListener('click', e => { if (e.target === el('cpModal')) el('cpModal').hidden = true; });
+
+  // toggle "réseaux prioritaires (Tesla/Lidl/Izivia) uniquement" vs "tous les réseaux"
+  updateToggleOthersBtn();
+  el('toggleOthers').onclick = () => {
+    showOthers = !showOthers;
+    updateToggleOthersBtn();
+    renderResults();
+  };
 
   // menu déroulant multichoix fournisseurs
   el('opDropBtn').onclick = e => { e.stopPropagation(); el('opDropPanel').hidden = !el('opDropPanel').hidden; };
