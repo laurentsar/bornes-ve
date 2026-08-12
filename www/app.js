@@ -144,8 +144,17 @@ function locKey(r) {
 // unionne les prises/opérateurs, garde la puissance max. Un lieu = une carte.
 function groupStations(rows) {
   const map = new Map();
+  const idIndex = new Map();  // id_station_itinerance -> clé de groupe déjà utilisée
   for (const r of rows) {
-    const key = locKey(r);
+    let key = locKey(r);
+    // Un même id_station_itinerance doit toujours retomber dans le même groupe,
+    // même si ses lignes déclarent des coordonnées légèrement différentes qui
+    // tombent de part et d'autre du seuil d'arrondi de locKey (ex : Tesla déclare
+    // parfois 2 jeux de coordonnées à ~30 m d'écart pour la même station -> sans
+    // ça, 2 cartes identiques apparaissent pour la même borne physique).
+    const sid = r.id_station_itinerance;
+    if (sid && idIndex.has(sid)) key = idIndex.get(sid);
+    else if (sid) idIndex.set(sid, key);
     let s = map.get(key);
     if (!s) {
       s = {
