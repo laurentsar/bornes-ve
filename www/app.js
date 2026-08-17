@@ -34,8 +34,8 @@ let showOthers = false;           // false = uniquement les réseaux prioritaire
 
 // Réseaux affichés par défaut dans la recherche (les plus utilisés) ; les autres
 // n'apparaissent que si l'utilisateur active "Afficher aussi les autres réseaux".
-const PRIORITY_OPS = [/tesla/i, /lidl/i, /izivia/i];
-const PRIORITY_ENSEIGNES = ['Tesla', 'Lidl', 'Izivia'];  // pour les requêtes API (nom_enseigne)
+const PRIORITY_OPS = [/tesla/i, /lidl/i, /izivia/i, /aldi/i];
+const PRIORITY_ENSEIGNES = ['Tesla', 'Lidl', 'Izivia', 'Aldi'];  // pour les requêtes API (nom_enseigne)
 function isPriorityOp(s) {
   // Beaucoup de bornes "enseigne" (ex : Lidl) sont exploitées par un tiers
   // (Allego, Atlante…) : le champ opérateur ne contient alors PAS la marque,
@@ -89,6 +89,7 @@ function fmtDist(km) {
 const BRANDS = [
   { re: /tesla/i,            c: '#e82127', t: 'T',  d: 'tesla.com' },
   { re: /lidl/i,             c: '#0050aa', t: 'Li', d: 'lidl.fr' },
+  { re: /aldi/i,             c: '#00549f', t: 'Ad', d: 'aldi.fr' },
   { re: /ionity/i,           c: '#2b2b40', t: 'IO', d: 'ionity.eu' },
   { re: /total|totalenergies/i, c: '#e2001a', t: 'TE', d: 'totalenergies.fr' },
   { re: /izivia/i,           c: '#00a3a1', t: 'IZ', d: 'izivia.com' },
@@ -278,7 +279,7 @@ function fetchByBBox(lat, lon, radiusKm) {
   return fetchRows(q, pages);
 }
 // Bornes d'une ENSEIGNE donnée dans un carré autour de (lat, lon). Utilisé pour
-// les réseaux prioritaires (Tesla/Lidl/Izivia) : fetchByBBox() plafonne à ~500
+// les réseaux prioritaires (Tesla/Lidl/Izivia/Aldi) : fetchByBBox() plafonne à ~500
 // lignes par zone, un grand quartier dense (Electra, Bump, Allego…) peut donc
 // noyer/exclure ces réseaux avant même qu'on les filtre côté client.
 function fetchByBBoxEnseigne(lat, lon, radiusKm, term) {
@@ -707,7 +708,7 @@ async function doSearch() {
     if (geo) {
       // Ville reconnue → bbox autour du centre (rattrape les communes VIDES et les
       // accents, ex Souillac/Groléjac) + enseigne (marques présentes dans la ville)
-      // + réseaux prioritaires (Tesla/Lidl/Izivia) en requête dédiée : la bbox seule
+      // + réseaux prioritaires (Tesla/Lidl/Izivia/Aldi) en requête dédiée : la bbox seule
       // plafonne à ~500 lignes et peut les exclure dans une zone dense.
       const [bboxRows, ensRows, prioRows] = await Promise.all([
         fetchByBBox(geo.lat, geo.lon, 8).catch(() => []),
@@ -739,7 +740,7 @@ async function loadAround() {
   el('searchList').innerHTML = '';
   try {
     // bbox seule plafonne à ~500 lignes : requête dédiée pour les réseaux
-    // prioritaires (Tesla/Lidl/Izivia) afin qu'ils ne soient jamais exclus.
+    // prioritaires (Tesla/Lidl/Izivia/Aldi) afin qu'ils ne soient jamais exclus.
     const [bboxRows, prioRows] = await Promise.all([
       fetchByBBox(userPos.lat, userPos.lon, radius),
       fetchPriorityInBBox(userPos.lat, userPos.lon, radius).catch(() => []),
@@ -1090,7 +1091,7 @@ function init() {
   el('cpClose').onclick = () => { el('cpModal').hidden = true; };
   el('cpModal').addEventListener('click', e => { if (e.target === el('cpModal')) el('cpModal').hidden = true; });
 
-  // toggle "réseaux prioritaires (Tesla/Lidl/Izivia) uniquement" vs "tous les réseaux"
+  // toggle "réseaux prioritaires (Tesla/Lidl/Izivia/Aldi) uniquement" vs "tous les réseaux"
   updateToggleOthersBtn();
   el('toggleOthers').onclick = () => {
     showOthers = !showOthers;
