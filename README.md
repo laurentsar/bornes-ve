@@ -6,7 +6,7 @@ filtrer par **type de prise** et **fournisseur**, et **comparer tes prix**.
 
 ## Fonctions
 - 🔎 **Recherche par commune OU enseigne** dans la base officielle IRVE (tabular-API data.gouv.fr, en direct).
-  Enseigne utile car certaines bornes (Lidl, Tesla…) ont une commune vide dans la base et n'apparaissent
+  Enseigne utile car certaines bornes (Lidl, Aldi, Tesla…) ont une commune vide dans la base et n'apparaissent
   que par leur réseau.
 - 📍 **Autour de moi** : géolocalisation (plugin Capacitor Geolocation / `navigator.geolocation`),
   bornes dans un rayon réglable (2–20 km), tri et affichage par distance.
